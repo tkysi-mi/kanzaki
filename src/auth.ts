@@ -82,7 +82,7 @@ import open from "open";
 
 const OPENAI_AUTH_URL = "https://auth.openai.com/oauth/authorize";
 const OPENAI_TOKEN_URL = "https://auth.openai.com/oauth/token";
-const OPENAI_CLIENT_ID = "openai-codex"; // OpenClaw compatibility
+const OPENAI_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"; // Correct client ID used by the platform
 const REDIRECT_URI = "http://127.0.0.1:1455/auth/callback";
 
 export interface TokenResponse {
