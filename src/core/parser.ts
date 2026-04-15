@@ -13,11 +13,20 @@ export interface Rule {
   filePatterns: string[];
 }
 
+export interface ParseError {
+  /** エラーが発生した行番号 (1-indexed) */
+  line: number;
+  /** エラーまたは警告のメッセージ */
+  message: string;
+}
+
 export interface ParsedRulesFile {
   /** パースされたルール一覧 */
   rules: Rule[];
   /** ルール以外の自由記述テキスト（LLMへのコンテキスト） */
   context: string;
+  /** フォーマットエラー（あれば） */
+  errors: ParseError[];
 }
 
 /**
@@ -43,25 +52,41 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
   const lines = content.split("\n");
   const rules: Rule[] = [];
   const contextLines: string[] = [];
+  const errors: ParseError[] = [];
   let currentGroup = "General";
   let currentPatterns: string[] = [];
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
+    const lineNumber = i + 1;
 
     // ヘッダーを検出してグループ名とファイルパターンを更新
     const headerMatch = trimmed.match(/^#{1,6}\s+(.+)$/);
     if (headerMatch) {
-      const { name, patterns } = parseHeaderWithPatterns(headerMatch[1].trim());
+      const headerText = headerMatch[1].trim();
+      const { name, patterns } = parseHeaderWithPatterns(headerText);
       currentGroup = name;
       currentPatterns = patterns;
+
+      // 括弧の不一致を検出（閉じ括弧忘れ等）
+      if (headerText.includes("(") && !headerText.includes(")")) {
+        errors.push({ line: lineNumber, message: `Missing closing parenthesis in file scope: "${headerText}"` });
+      }
       continue;
     }
 
-    // チェックリスト項目を検出
+    // チェックリスト項目を検出 (- [ ])
     const ruleMatch = trimmed.match(/^-\s*\[[\s]?\]\s+(.+)$/);
     if (ruleMatch) {
       const rawText = ruleMatch[1].trim();
+      
+      // 不正なseverityタグの検出（タイポ）
+      const invalidTagMatch = rawText.match(/^!(err|warning|info|critical|block)\b/i);
+      if (invalidTagMatch) {
+        errors.push({ line: lineNumber, message: `Unknown severity tag "${invalidTagMatch[0]}". Use !error or !warn.` });
+      }
+
       const { severity, text } = parseSeverity(rawText);
       rules.push({
         group: currentGroup,
@@ -72,8 +97,14 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
       continue;
     }
 
-    // それ以外の非空行はコンテキストとして収集
+    // それ以外の行の解析
     if (trimmed.length > 0) {
+      // リスト項目の形式ミスの検出 (* [ ] や - [x] など)
+      if (trimmed.match(/^[-*+]\s*\[(.*?)\]/)) {
+        errors.push({ line: lineNumber, message: `Invalid rule format. Checkbox must be '- [ ]'. Found: "${trimmed}"` });
+      }
+      
+      // 通常のコンテキストとして収集
       contextLines.push(trimmed);
     }
   }
@@ -81,6 +112,7 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
   return {
     rules,
     context: contextLines.join("\n"),
+    errors,
   };
 }
 

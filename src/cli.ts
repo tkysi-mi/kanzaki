@@ -96,7 +96,17 @@ export function createCli(): Command {
         }
 
         // ルール解析
-        const { rules, context: rulesContext } = parseRulesFile(config.rulesPath);
+        const { rules, context: rulesContext, errors: parseErrors } = parseRulesFile(config.rulesPath);
+
+        if (parseErrors && parseErrors.length > 0) {
+          console.error(chalk.red.bold(`\n❌ Found ${parseErrors.length} formatting error(s) in ${config.rulesPath}:`));
+          parseErrors.forEach((err) => {
+            console.error(chalk.yellow(`  Line ${err.line}: `) + err.message);
+          });
+          console.error(chalk.dim("\nPlease fix these errors before committing."));
+          process.exit(1);
+        }
+
         if (rules.length === 0) {
           console.log(chalk.yellow("No rules found in rules file. Skipping review."));
           process.exit(0);
