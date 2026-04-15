@@ -1,0 +1,41 @@
+{
+  "name": "kanzaki",
+  "version": "0.1.0",
+  "description": "LLM-powered semantic pre-commit linter. Define rules in Markdown, review diffs with AI.",
+  "type": "module",
+  "bin": {
+    "kanzaki": "./dist/bin.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "keywords": [
+    "linter",
+    "pre-commit",
+    "llm",
+    "ai",
+    "code-review",
+    "semantic"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "dotenv": "^16.5.0",
+    "openai": "^4.85.4"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3"
+  }
+}
