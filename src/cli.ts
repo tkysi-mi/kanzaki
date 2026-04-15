@@ -16,8 +16,7 @@ import {
   clearCredentials,
   loadCredentials,
   hasCredentials,
-  requestDeviceCode,
-  pollForToken,
+  loginWithOAuthPKCE,
 } from "./auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -175,21 +174,9 @@ export function createCli(): Command {
           process.exit(1);
         }
 
-        console.log(chalk.dim("Starting OAuth Device Flow..."));
+        console.log(chalk.dim("Starting OAuth Authorization Code Flow..."));
         try {
-          const deviceCode = await requestDeviceCode();
-          console.log();
-          console.log(chalk.bold("Open this URL in your browser:"));
-          console.log(chalk.cyan.underline(deviceCode.verification_uri_complete || deviceCode.verification_uri));
-          console.log();
-          console.log(`Enter code: ${chalk.bold.yellow(deviceCode.user_code)}`);
-          console.log(chalk.dim("Waiting for authorization..."));
-
-          const token = await pollForToken(
-            deviceCode.device_code,
-            deviceCode.interval,
-            deviceCode.expires_in,
-          );
+          const token = await loginWithOAuthPKCE();
 
           const expiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();
           saveCredentials({

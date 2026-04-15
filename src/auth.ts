@@ -74,93 +74,108 @@ export function getActiveApiKey(creds: StoredCredentials): string {
   return creds.apiKey;
 }
 
-// ── OAuth Device Flow ───────────────────────────────────
+// ── OAuth Authorization Code Flow (PKCE) ─────────────────
 
-const OPENAI_DEVICE_AUTH_URL = "https://auth.openai.com/oauth/device/code";
+import { createServer } from "node:http";
+import { randomBytes, createHash } from "node:crypto";
+import open from "open";
+
+const OPENAI_AUTH_URL = "https://auth.openai.com/oauth/authorize";
 const OPENAI_TOKEN_URL = "https://auth.openai.com/oauth/token";
-const OPENAI_CLIENT_ID = "kanzaki-cli";
-
-export interface DeviceCodeResponse {
-  device_code: string;
-  user_code: string;
-  verification_uri: string;
-  verification_uri_complete: string;
-  expires_in: number;
-  interval: number;
-}
+const OPENAI_CLIENT_ID = "openai-codex"; // OpenClaw compatibility
+const REDIRECT_URI = "http://127.0.0.1:1455/auth/callback";
 
 export interface TokenResponse {
   access_token: string;
-  token_type: string;
-  expires_in: number;
   refresh_token?: string;
+  expires_in: number;
 }
 
-/**
- * OAuth Device Code Flowを開始する。
- * ユーザーにuser_codeとURLを表示し、認可を待つ。
- */
-export async function requestDeviceCode(): Promise<DeviceCodeResponse> {
-  const res = await fetch(OPENAI_DEVICE_AUTH_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_id: OPENAI_CLIENT_ID,
-      scope: "openai.public",
-    }),
-  });
+function generatePKCE(): { verifier: string; challenge: string } {
+  const verifier = randomBytes(32).toString('base64url');
+  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  return { verifier, challenge };
+}
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Failed to request device code: ${res.status} ${body}`);
+export async function loginWithOAuthPKCE(): Promise<TokenResponse> {
+  const { verifier, challenge } = generatePKCE();
+  const state = randomBytes(16).toString('base64url');
+  
+  const authUrl = `${OPENAI_AUTH_URL}?response_type=code&client_id=${OPENAI_CLIENT_ID}&code_challenge=${challenge}&code_challenge_method=S256&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=openai.public&state=${state}`;
+
+  console.log("Opening browser for authentication...");
+  console.log("If your browser does not open automatically, please open this link:");
+  console.log(authUrl);
+  
+  try {
+    await open(authUrl);
+  } catch {
+    // Ignore error if `open` fails (e.g. no default browser found)
   }
 
-  return (await res.json()) as DeviceCodeResponse;
-}
+  return new Promise((resolve, reject) => {
+    const server = createServer(async (req, res) => {
+      try {
+        if (!req.url?.startsWith('/auth/callback')) {
+          res.writeHead(404);
+          res.end("Not found");
+          return;
+        }
 
-/**
- * デバイスコードを使ってトークンをポーリングする。
- * ユーザーが認可するまで interval 秒ごとにリトライする。
- */
-export async function pollForToken(
-  deviceCode: string,
-  interval: number,
-  expiresIn: number,
-): Promise<TokenResponse> {
-  const deadline = Date.now() + expiresIn * 1000;
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const code = url.searchParams.get('code');
+        const returnedState = url.searchParams.get('state');
 
-  while (Date.now() < deadline) {
-    await sleep(interval * 1000);
+        if (!code) {
+          res.writeHead(400);
+          res.end("Missing code");
+          server.close();
+          return reject(new Error("No authorization code received"));
+        }
 
-    const res = await fetch(OPENAI_TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: OPENAI_CLIENT_ID,
-        device_code: deviceCode,
-        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-      }),
+        if (returnedState !== state) {
+           res.writeHead(400);
+           res.end("Invalid state");
+           server.close();
+           return reject(new Error("OAuth state mismatch"));
+        }
+
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end("<h1>Authentication Successful!</h1><p>You can close this tab and return to your terminal.</p>");
+
+        server.close();
+
+        // Exchange code for token
+        const tokenRes = await fetch(OPENAI_TOKEN_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client_id: OPENAI_CLIENT_ID,
+            grant_type: 'authorization_code',
+            code,
+            code_verifier: verifier,
+            redirect_uri: REDIRECT_URI
+          })
+        });
+
+        if (!tokenRes.ok) {
+          const body = await tokenRes.text();
+          return reject(new Error(`Token exchange failed: ${tokenRes.status} ${body}`));
+        }
+
+        const tokenData = await tokenRes.json() as TokenResponse;
+        resolve(tokenData);
+
+      } catch (err) {
+         res.writeHead(500);
+         res.end("Internal Server Error");
+         server.close();
+         reject(err);
+      }
     });
 
-    if (res.ok) {
-      return (await res.json()) as TokenResponse;
-    }
-
-    const body = (await res.json()) as { error?: string };
-    if (body.error === "authorization_pending") {
-      continue;
-    }
-    if (body.error === "slow_down") {
-      interval += 5;
-      continue;
-    }
-
-    throw new Error(`OAuth token error: ${body.error}`);
-  }
-
-  throw new Error("Device authorization timed out.");
+    server.listen(1455, '127.0.0.1');
+  });
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+
