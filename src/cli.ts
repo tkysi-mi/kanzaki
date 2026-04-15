@@ -34,22 +34,28 @@ export function createCli(): Command {
   // ── init ──────────────────────────────────────────────
   program
     .command("init")
-    .description("Create .kanzaki.md rules file")
+    .description("Create .kanzaki/rules.md rules file")
     .action(async () => {
       const cwd = process.cwd();
 
       // ルールファイル作成
-      const rulesPath = resolve(cwd, ".kanzaki.md");
+      const rulesPath = resolve(cwd, ".kanzaki", "rules.md");
+      const rulesDir = dirname(rulesPath);
+      
+      if (!existsSync(rulesDir)) {
+        mkdirSync(rulesDir, { recursive: true });
+      }
+
       if (existsSync(rulesPath)) {
-        console.log(chalk.yellow("⚠ .kanzaki.md already exists, skipping."));
+        console.log(chalk.yellow("⚠ .kanzaki/rules.md already exists, skipping."));
       } else {
         const template = loadTemplate();
         writeFileSync(rulesPath, template, "utf-8");
-        console.log(chalk.green("✓ Created .kanzaki.md"));
+        console.log(chalk.green("✓ Created .kanzaki/rules.md"));
       }
 
       console.log();
-      console.log(chalk.dim("Edit .kanzaki.md to customize your review rules."));
+      console.log(chalk.dim("Edit .kanzaki/rules.md to customize your review rules."));
       console.log(chalk.dim("You can run 'kanzaki check' directly, or set it up with husky/lint-staged."));
       console.log(chalk.dim("Run 'kanzaki login' to authenticate."));
     });
@@ -60,7 +66,7 @@ export function createCli(): Command {
     .description("Review staged changes against rules")
     .option("-p, --provider <provider>", "LLM provider (openai / anthropic)")
     .option("-m, --model <model>", "Model name")
-    .option("-r, --rules <path>", "Path to rules file", ".kanzaki.md")
+    .option("-r, --rules <path>", "Path to rules file", ".kanzaki/rules.md")
     .option("--api-key <key>", "API key (prefer KANZAKI_API_KEY env var)")
     .option("--no-block", "Warn only, don't block commit")
     .option("-v, --verbose", "Verbose output")

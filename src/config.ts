@@ -51,7 +51,7 @@ export function loadConfig(overrides: Partial<KanzakiConfig> = {}): KanzakiConfi
 
   const model = overrides.model ?? process.env.KANZAKI_MODEL ?? DEFAULT_MODELS[provider] ?? "gpt-4o";
 
-  const rulesPath = overrides.rulesPath ?? process.env.KANZAKI_RULES_PATH ?? ".kanzaki.md";
+  const rulesPath = overrides.rulesPath ?? process.env.KANZAKI_RULES_PATH ?? ".kanzaki/rules.md";
 
   return {
     provider,

@@ -31,7 +31,7 @@ git commit
 Husky などの pre-commit hook で kanzaki check が起動
   ↓
 ┌──────────────┐  ┌──────────┐  ┌────────────┐
-│ .kanzaki.md  │  │ git diff │  │ ファイル全文 │
+│ .kanzaki/rules.md  │  │ git diff │  │ ファイル全文 │
 │ (ルール定義)  │  │ (staged) │  │ (コンテキスト)│
 └──────┬───────┘  └─────┬────┘  └──────┬─────┘
        └────────────┬───┘─────────────┘
@@ -55,7 +55,7 @@ Husky などの pre-commit hook で kanzaki check が起動
 **② 設定ロード** — APIキーとプロバイダーを以下の優先順位で解決：
   CLIフラグ → 環境変数 → `~/.config/kanzaki/credentials.json`
 
-**③ ルール解析** — `.kanzaki.md` を解析し、3つの要素を抽出：
+**③ ルール解析** — `.kanzaki/rules.md` を解析し、3つの要素を抽出：
   - `- [ ]` パターン → ルール（severity + テキスト）
   - `## Header (*.ts)` → グループ名 + ファイルスコープ
   - それ以外のテキスト → LLMへのコンテキスト
@@ -69,7 +69,7 @@ Husky などの pre-commit hook で kanzaki check が起動
 | 部分 | 内容 |
 |------|------|
 | System Prompt | 「品質レビュアーとして、各ルールへの準拠を判定せよ」 |
-| コンテキスト | `.kanzaki.md` 内の自由記述テキスト |
+| コンテキスト | `.kanzaki/rules.md` 内の自由記述テキスト |
 | ルール一覧 | `[ERROR]` / `[WARNING]` タグ付きで列挙 |
 | Diff | `git diff --staged` の出力（最大50KB） |
 | ファイル全文 | 変更ファイルの完全な内容（各最大20KB） |
@@ -112,7 +112,7 @@ cd your-project
 npx kanzaki init
 ```
 
-これにより `.kanzaki.md`（ルールファイル）が作成されます。
+これにより `.kanzaki/rules.md`（ルールファイル）が作成されます。
 
 ### 3. Git フック（Husky）の設定
 
@@ -129,7 +129,7 @@ echo "npx kanzaki check" > .husky/pre-commit
 
 ### 4. ルールのカスタマイズ
 
-`.kanzaki.md` を開いて、プロジェクトに合ったルールを書きます。
+`.kanzaki/rules.md` を開いて、プロジェクトに合ったルールを書きます。
 
 ### 5. 通常通りコミット
 
@@ -143,7 +143,7 @@ git commit -m "update report"
 
 ## ルールの書き方
 
-`.kanzaki.md` は Markdown のチェックリスト形式で記述します。
+`.kanzaki/rules.md` は Markdown のチェックリスト形式で記述します。
 
 ### 基本構文
 
@@ -273,7 +273,7 @@ Q4 決算報告プレゼンテーション。
 
 | コマンド | 説明 |
 |---------|------|
-| `kanzaki init` | `.kanzaki.md` テンプレートのみ作成 |
+| `kanzaki init` | `.kanzaki/rules.md` テンプレートのみ作成 |
 | `kanzaki check` | ステージ済みの変更をレビュー |
 | `kanzaki login` | APIキーまたはOAuthで認証 |
 | `kanzaki logout` | 保存済み認証情報を削除 |
@@ -284,7 +284,7 @@ Q4 決算報告プレゼンテーション。
 ```
 -p, --provider <名前>   LLMプロバイダー: openai / anthropic（デフォルト: openai）
 -m, --model <名前>      使用モデル（デフォルト: gpt-4o）
--r, --rules <パス>      ルールファイルのパス（デフォルト: .kanzaki.md）
+-r, --rules <パス>      ルールファイルのパス（デフォルト: .kanzaki/rules.md）
     --api-key <キー>    APIキー（kanzaki login 推奨）
     --no-block          警告のみ、コミットをブロックしない
 -v, --verbose           詳細な出力を表示
@@ -309,7 +309,7 @@ Q4 決算報告プレゼンテーション。
 | `KANZAKI_API_KEY` | LLM APIキー | — |
 | `KANZAKI_PROVIDER` | `openai` / `anthropic` | `openai` |
 | `KANZAKI_MODEL` | モデル名 | `gpt-4o` |
-| `KANZAKI_RULES_PATH` | ルールファイルのパス | `.kanzaki.md` |
+| `KANZAKI_RULES_PATH` | ルールファイルのパス | `.kanzaki/rules.md` |
 
 プロジェクトルートの `.env` ファイルは自動的に読み込まれます。
 
