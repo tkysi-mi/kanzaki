@@ -34,7 +34,7 @@ export function createCli(): Command {
   // ── init ──────────────────────────────────────────────
   program
     .command("init")
-    .description("Create .kanzaki.md rules file and install pre-commit hook")
+    .description("Create .kanzaki.md rules file")
     .action(async () => {
       const cwd = process.cwd();
 
@@ -48,11 +48,9 @@ export function createCli(): Command {
         console.log(chalk.green("✓ Created .kanzaki.md"));
       }
 
-      // pre-commit hook インストール
-      installHook();
-
       console.log();
       console.log(chalk.dim("Edit .kanzaki.md to customize your review rules."));
+      console.log(chalk.dim("You can run 'kanzaki check' directly, or set it up with husky/lint-staged."));
       console.log(chalk.dim("Run 'kanzaki login' to authenticate."));
     });
 
@@ -143,14 +141,6 @@ export function createCli(): Command {
         console.error(chalk.red(`Error: ${(error as Error).message}`));
         process.exit(1);
       }
-    });
-
-  // ── install ───────────────────────────────────────────
-  program
-    .command("install")
-    .description("Install pre-commit git hook")
-    .action(() => {
-      installHook();
     });
 
   // ── login ─────────────────────────────────────────────
@@ -251,46 +241,6 @@ export function createCli(): Command {
     });
 
   return program;
-}
-
-function installHook(): void {
-  try {
-    const repoRoot = getRepoRoot();
-    const hooksDir = resolve(repoRoot, ".git", "hooks");
-
-    if (!existsSync(hooksDir)) {
-      mkdirSync(hooksDir, { recursive: true });
-    }
-
-    const hookPath = resolve(hooksDir, "pre-commit");
-    const hookContent = `#!/bin/sh
-# Kanzaki pre-commit hook
-# This hook runs kanzaki to review staged changes with LLM
-
-npx kanzaki check
-`;
-
-    if (existsSync(hookPath)) {
-      const existing = readFileSync(hookPath, "utf-8");
-      if (existing.includes("kanzaki")) {
-        console.log(chalk.yellow("⚠ pre-commit hook already contains kanzaki, skipping."));
-        return;
-      }
-      // 既存hookにappend
-      writeFileSync(hookPath, existing + "\n" + hookContent, "utf-8");
-      console.log(chalk.green("✓ Appended kanzaki to existing pre-commit hook"));
-    } else {
-      writeFileSync(hookPath, hookContent, "utf-8");
-      try {
-        chmodSync(hookPath, "755");
-      } catch {
-        // Windows では chmod が不要な場合がある
-      }
-      console.log(chalk.green("✓ Installed pre-commit hook"));
-    }
-  } catch (error) {
-    console.error(chalk.red(`Failed to install hook: ${(error as Error).message}`));
-  }
 }
 
 function loadTemplate(): string {

@@ -28,7 +28,7 @@
 ```
 git commit
   ↓
-pre-commit hook が自動起動
+Husky などの pre-commit hook で kanzaki check が起動
   ↓
 ┌──────────────┐  ┌──────────┐  ┌────────────┐
 │ .kanzaki.md  │  │ git diff │  │ ファイル全文 │
@@ -109,23 +109,34 @@ kanzaki login --provider anthropic
 
 ```bash
 cd your-project
-kanzaki init
+npx kanzaki init
 ```
 
-これにより：
-- `.kanzaki.md`（ルールファイル）が作成される
-- `.git/hooks/pre-commit` にフックがインストールされる
+これにより `.kanzaki.md`（ルールファイル）が作成されます。
 
-### 3. ルールのカスタマイズ
+### 3. Git フック（Husky）の設定
+
+モダンなフロントエンド開発などでは、Husky や lint-staged を使ってコミット前に Kanzaki を実行するのが標準的です。
+
+**Husky を使った設定例:**
+```bash
+npm install --save-dev husky
+npx husky init
+echo "npx kanzaki check" > .husky/pre-commit
+```
+
+**lint-staged と併用する場合**は、単純なチェッカーとして `.husky/pre-commit` に直接追加するか、全体のフォーマット後に実行されるように並べて設定します。
+
+### 4. ルールのカスタマイズ
 
 `.kanzaki.md` を開いて、プロジェクトに合ったルールを書きます。
 
-### 4. 通常通りコミット
+### 5. 通常通りコミット
 
 ```bash
 git add .
 git commit -m "update report"
-# → Kanzaki が自動でレビューを実行
+# → Husky経由で Kanzaki が自動レビューを実行
 ```
 
 ---
@@ -262,9 +273,8 @@ Q4 決算報告プレゼンテーション。
 
 | コマンド | 説明 |
 |---------|------|
-| `kanzaki init` | `.kanzaki.md` 作成 + pre-commit hook インストール |
-| `kanzaki check` | ステージ済みの変更をレビュー（hookから自動実行） |
-| `kanzaki install` | pre-commit hook のみインストール |
+| `kanzaki init` | `.kanzaki.md` テンプレートのみ作成 |
+| `kanzaki check` | ステージ済みの変更をレビュー |
 | `kanzaki login` | APIキーまたはOAuthで認証 |
 | `kanzaki logout` | 保存済み認証情報を削除 |
 | `kanzaki status` | 認証状態を表示 |
