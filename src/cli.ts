@@ -162,17 +162,15 @@ export function createCli(): Command {
   program
     .command("login")
     .description("Authenticate with OpenAI or Anthropic")
-    .option("--oauth", "Use OAuth Device Flow (OpenAI subscription)")
+    .option("--use-chatgpt", "Log in using ChatGPT Plus/Pro subscription (OAuth)")
+    .option("--use-claude", "Log in using Claude Pro subscription (Session token)")
     .option("-p, --provider <provider>", "Provider: openai or anthropic", "openai")
     .action(async (opts) => {
       const provider = opts.provider as "openai" | "anthropic";
 
-      if (opts.oauth) {
-        // OAuth Device Flow
-        if (provider !== "openai") {
-          console.error(chalk.red("OAuth is currently only supported for OpenAI."));
-          process.exit(1);
-        }
+      if (opts.useChatgpt) {
+        // OpenAI OAuth Flow
+
 
         console.log(chalk.dim("Starting OAuth Authorization Code Flow..."));
         try {
@@ -193,6 +191,25 @@ export function createCli(): Command {
           console.error(chalk.dim("Try 'kanzaki login' with an API key instead."));
           process.exit(1);
         }
+      } else if (opts.useClaude) {
+        // Anthropic Paste Token Flow (OpenClaw style)
+        console.log(chalk.dim("Starting Anthropic Session Token Setup..."));
+        console.log(chalk.dim("You can retrieve your session token from your Claude browser session or Claude Code CLI."));
+        const token = await promptSecret("Paste your Anthropic session token: ");
+
+        if (!token) {
+          console.error(chalk.red("No session token provided."));
+          process.exit(1);
+        }
+
+        saveCredentials({
+          provider: "anthropic",
+          apiKey: "",
+          oauthToken: token, // Kanzaki treats this similarly to an OAuth access token
+        });
+
+        console.log(chalk.green("\n✓ Authenticated with Claude Pro (Session Token)"));
+        console.log(chalk.dim("Credentials stored in ~/.config/kanzaki/credentials.json"));
       } else {
         // API Key入力
         const key = await promptSecret(
