@@ -1,0 +1,78 @@
+import { spawn } from "node:child_process";
+import type { LLMProvider, ReviewResult } from "./types.js";
+
+/**
+ * ローカルのClaude CLI (`claude -p`) をサブプロセスとして呼び出すプロバイダー。
+ * OpenClawと同じ方式で、Claude CLIが認証・セッション管理を担当する。
+ */
+export class ClaudeCliProvider implements LLMProvider {
+  async review(systemPrompt: string, userPrompt: string): Promise<ReviewResult> {
+    // systemとuserを1つのプロンプトに結合してstdinで渡す
+    const combinedPrompt = `${systemPrompt}\n\n---\n\n${userPrompt}`;
+
+    const output = await this.runClaudeCli(combinedPrompt);
+    return parseReviewResponse(output);
+  }
+
+  private runClaudeCli(prompt: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      // Windowsではclaude.cmdを明示的に指定してshell:trueを避ける
+      const command = process.platform === "win32" ? "claude.cmd" : "claude";
+      const child = spawn(command, ["-p"], {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      let stdout = "";
+      let stderr = "";
+
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString("utf-8");
+      });
+
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString("utf-8");
+      });
+
+      child.on("error", (err) => {
+        reject(new Error(`Failed to spawn claude CLI: ${err.message}`));
+      });
+
+      child.on("close", (code) => {
+        if (code !== 0) {
+          reject(new Error(`claude CLI exited with code ${code}: ${stderr || stdout}`));
+          return;
+        }
+        resolve(stdout);
+      });
+
+      // プロンプトをstdinに書き込んで閉じる
+      child.stdin.write(prompt);
+      child.stdin.end();
+    });
+  }
+}
+
+function parseReviewResponse(raw: string): ReviewResult {
+  // Claude CLIはコードブロック内にJSONを返すことがあるため抽出を試みる
+  const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const jsonStr = jsonMatch ? jsonMatch[1].trim() : raw.trim();
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+
+    if (!Array.isArray(parsed.results)) {
+      throw new Error("Response missing 'results' array.");
+    }
+
+    return {
+      results: parsed.results.map((r: Record<string, unknown>) => ({
+        rule: String(r.rule ?? ""),
+        passed: Boolean(r.passed),
+        reason: String(r.reason ?? ""),
+      })),
+      summary: String(parsed.summary ?? ""),
+    };
+  } catch (error) {
+    throw new Error(`Failed to parse Claude CLI response as JSON:\n${raw}\n\n${error}`);
+  }
+}

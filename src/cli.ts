@@ -192,23 +192,26 @@ export function createCli(): Command {
           process.exit(1);
         }
       } else if (opts.useClaude) {
-        // Anthropic Paste Token Flow (OpenClaw style)
-        console.log(chalk.dim("Starting Anthropic Session Token Setup..."));
-        console.log(chalk.dim("You can retrieve your session token from your Claude browser session or Claude Code CLI."));
-        const token = await promptSecret("Paste your Anthropic session token: ");
+        // Claude CLI subprocess flow (OpenClaw style)
+        console.log(chalk.dim("Checking local Claude CLI installation..."));
 
-        if (!token) {
-          console.error(chalk.red("No session token provided."));
+        try {
+          const version = execSync("claude --version", { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+          console.log(chalk.dim(`Found: ${version}`));
+        } catch {
+          console.error(chalk.red("Claude CLI not found."));
+          console.error(chalk.dim("Install it from https://docs.claude.com/en/docs/claude-code and run 'claude login' first."));
           process.exit(1);
         }
 
         saveCredentials({
           provider: "anthropic",
           apiKey: "",
-          oauthToken: token, // Kanzaki treats this similarly to an OAuth access token
+          useClaudeCli: true,
         });
 
-        console.log(chalk.green("\n✓ Authenticated with Claude Pro (Session Token)"));
+        console.log(chalk.green("\n✓ Configured to use local Claude CLI"));
+        console.log(chalk.dim("Kanzaki will invoke 'claude -p' for reviews, using your existing Claude CLI session."));
         console.log(chalk.dim("Credentials stored in ~/.config/kanzaki/credentials.json"));
       } else {
         // API Key入力
@@ -242,7 +245,7 @@ export function createCli(): Command {
     .description("Show authentication status")
     .action(() => {
       const creds = loadCredentials();
-      if (!creds || (!creds.apiKey && !creds.oauthToken)) {
+      if (!creds || (!creds.apiKey && !creds.oauthToken && !creds.useClaudeCli)) {
         console.log(chalk.yellow("Not authenticated."));
         console.log(chalk.dim("Run 'kanzaki login' to authenticate."));
         return;
@@ -251,7 +254,9 @@ export function createCli(): Command {
       console.log(chalk.bold("Kanzaki Status"));
       console.log(`  Provider: ${chalk.cyan(creds.provider)}`);
 
-      if (creds.oauthToken) {
+      if (creds.useClaudeCli) {
+        console.log(`  Auth: ${chalk.cyan("Claude CLI subprocess")} ${chalk.green("(active)")}`);
+      } else if (creds.oauthToken) {
         const expired = creds.expiresAt && new Date(creds.expiresAt) < new Date();
         console.log(`  Auth: ${chalk.cyan("OAuth")}${expired ? chalk.red(" (expired)") : chalk.green(" (active)")}`);
       } else {

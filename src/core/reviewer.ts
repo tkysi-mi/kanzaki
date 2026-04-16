@@ -5,6 +5,7 @@ import type { FileContext, StagedChanges } from "./git.js";
 import type { LLMProvider, ReviewResult, Severity } from "../llm/types.js";
 import { OpenAIProvider } from "../llm/openai.js";
 import { AnthropicProvider } from "../llm/anthropic.js";
+import { ClaudeCliProvider } from "../llm/claude-cli.js";
 
 const SYSTEM_PROMPT = `You are a strict quality reviewer. Your job is to review changes (git diff) against a checklist of rules defined by the user.
 
@@ -52,6 +53,9 @@ function createProvider(config: KanzakiConfig): LLMProvider {
     case "openai":
       return new OpenAIProvider(config.apiKey, config.model, config.useOAuth);
     case "anthropic":
+      if (config.useClaudeCli) {
+        return new ClaudeCliProvider();
+      }
       return new AnthropicProvider(config.apiKey, config.model);
     default:
       throw new Error(`Unknown provider: ${config.provider}`);

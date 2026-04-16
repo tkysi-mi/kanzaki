@@ -12,6 +12,8 @@ export interface KanzakiConfig {
   noBlock: boolean;
   /** ChatGPT OAuth認証を使用しているか */
   useOAuth: boolean;
+  /** Claude CLIをサブプロセスとして利用するか */
+  useClaudeCli: boolean;
 }
 
 const DEFAULT_MODELS: Record<string, string> = {
@@ -63,5 +65,6 @@ export function loadConfig(overrides: Partial<KanzakiConfig> = {}): KanzakiConfi
     verbose: overrides.verbose ?? false,
     noBlock: overrides.noBlock ?? false,
     useOAuth: !!(stored?.oauthToken),
+    useClaudeCli: !!(stored?.useClaudeCli),
   };
 }

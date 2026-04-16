@@ -14,6 +14,8 @@ export interface StoredCredentials {
   refreshToken?: string;
   /** Token expiry (ISO string) */
   expiresAt?: string;
+  /** Claude CLIをサブプロセスとして利用するフラグ */
+  useClaudeCli?: boolean;
 }
 
 /**
@@ -54,7 +56,7 @@ export function clearCredentials(): void {
  */
 export function hasCredentials(): boolean {
   const creds = loadCredentials();
-  return creds !== null && (!!creds.apiKey || !!creds.oauthToken);
+  return creds !== null && (!!creds.apiKey || !!creds.oauthToken || !!creds.useClaudeCli);
 }
 
 /**
@@ -62,8 +64,17 @@ export function hasCredentials(): boolean {
  * OAuth tokenがある場合はそちらを優先（有効期限チェック付き）。
  */
 export function getActiveApiKey(creds: StoredCredentials): string {
+  // Claude CLIを使う場合は、APIキーはsubprocess側で管理するのでダミー値を返す
+  if (creds.useClaudeCli) {
+    return "claude-cli";
+  }
+
   // OAuthトークンが有効ならそれを使う
-  if (creds.oauthToken && creds.expiresAt) {
+  if (creds.oauthToken) {
+    // expiresAtが未設定（Claudeセッショントークン等）なら常に有効とみなす
+    if (!creds.expiresAt) {
+      return creds.oauthToken;
+    }
     const expiry = new Date(creds.expiresAt);
     if (expiry > new Date()) {
       return creds.oauthToken;
