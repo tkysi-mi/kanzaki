@@ -83,7 +83,7 @@ import open from "open";
 const OPENAI_AUTH_URL = "https://auth.openai.com/oauth/authorize";
 const OPENAI_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const OPENAI_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"; // Correct client ID used by the platform
-const REDIRECT_URI = "http://127.0.0.1:1455/auth/callback";
+const REDIRECT_URI = "http://localhost:1455/auth/callback";
 
 export interface TokenResponse {
   access_token: string;
@@ -101,7 +101,8 @@ export async function loginWithOAuthPKCE(): Promise<TokenResponse> {
   const { verifier, challenge } = generatePKCE();
   const state = randomBytes(16).toString('base64url');
   
-  const authUrl = `${OPENAI_AUTH_URL}?response_type=code&client_id=${OPENAI_CLIENT_ID}&code_challenge=${challenge}&code_challenge_method=S256&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=openai.public&state=${state}`;
+  const scope = encodeURIComponent("openid profile email offline_access");
+  const authUrl = `${OPENAI_AUTH_URL}?response_type=code&client_id=${OPENAI_CLIENT_ID}&code_challenge=${challenge}&code_challenge_method=S256&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scope}&state=${state}&id_token_add_organizations=true&codex_cli_simplified_flow=true`;
 
   console.log("Opening browser for authentication...");
   console.log("If your browser does not open automatically, please open this link:");
@@ -174,7 +175,7 @@ export async function loginWithOAuthPKCE(): Promise<TokenResponse> {
       }
     });
 
-    server.listen(1455, '127.0.0.1');
+    server.listen(1455, 'localhost');
   });
 }
 
