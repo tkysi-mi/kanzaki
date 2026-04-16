@@ -10,10 +10,12 @@ export interface KanzakiConfig {
   rulesPath: string;
   verbose: boolean;
   noBlock: boolean;
+  /** ChatGPT OAuth認証を使用しているか */
+  useOAuth: boolean;
 }
 
 const DEFAULT_MODELS: Record<string, string> = {
-  openai: "gpt-4o",
+  openai: "gpt-5.4",
   anthropic: "claude-sonnet-4-20250514",
 };
 
@@ -49,7 +51,7 @@ export function loadConfig(overrides: Partial<KanzakiConfig> = {}): KanzakiConfi
     );
   }
 
-  const model = overrides.model ?? process.env.KANZAKI_MODEL ?? DEFAULT_MODELS[provider] ?? "gpt-4o";
+  const model = overrides.model ?? process.env.KANZAKI_MODEL ?? DEFAULT_MODELS[provider] ?? "gpt-5.4";
 
   const rulesPath = overrides.rulesPath ?? process.env.KANZAKI_RULES_PATH ?? ".kanzaki/rules.md";
 
@@ -60,5 +62,6 @@ export function loadConfig(overrides: Partial<KanzakiConfig> = {}): KanzakiConfi
     rulesPath: resolve(process.cwd(), rulesPath),
     verbose: overrides.verbose ?? false,
     noBlock: overrides.noBlock ?? false,
+    useOAuth: !!(stored?.oauthToken),
   };
 }

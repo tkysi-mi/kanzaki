@@ -50,7 +50,7 @@ export async function review(
 function createProvider(config: KanzakiConfig): LLMProvider {
   switch (config.provider) {
     case "openai":
-      return new OpenAIProvider(config.apiKey, config.model);
+      return new OpenAIProvider(config.apiKey, config.model, config.useOAuth);
     case "anthropic":
       return new AnthropicProvider(config.apiKey, config.model);
     default:
