@@ -102,7 +102,8 @@ export async function loginWithOAuthPKCE(): Promise<TokenResponse> {
   const state = randomBytes(16).toString('base64url');
   
   const scope = encodeURIComponent("openid profile email offline_access");
-  const authUrl = `${OPENAI_AUTH_URL}?response_type=code&client_id=${OPENAI_CLIENT_ID}&code_challenge=${challenge}&code_challenge_method=S256&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scope}&state=${state}&id_token_add_organizations=true&codex_cli_simplified_flow=true`;
+  const audience = encodeURIComponent("https://api.openai.com/v1");
+  const authUrl = `${OPENAI_AUTH_URL}?response_type=code&client_id=${OPENAI_CLIENT_ID}&code_challenge=${challenge}&code_challenge_method=S256&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scope}&audience=${audience}&state=${state}&id_token_add_organizations=true&codex_cli_simplified_flow=true`;
 
   console.log("Opening browser for authentication...");
   console.log("If your browser does not open automatically, please open this link:");
@@ -124,12 +125,21 @@ export async function loginWithOAuthPKCE(): Promise<TokenResponse> {
         }
 
         const url = new URL(req.url, `http://${req.headers.host}`);
+        const error = url.searchParams.get('error');
+        const errorDesc = url.searchParams.get('error_description');
         const code = url.searchParams.get('code');
         const returnedState = url.searchParams.get('state');
 
+        if (error) {
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end(`<h1>Authentication Failed</h1><p>${error}: ${errorDesc || 'Unknown error'}</p>`);
+          server.close();
+          return reject(new Error(`OAuth error: ${error} - ${errorDesc}`));
+        }
+
         if (!code) {
           res.writeHead(400);
-          res.end("Missing code");
+          res.end("Missing authorization code");
           server.close();
           return reject(new Error("No authorization code received"));
         }
