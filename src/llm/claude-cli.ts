@@ -1,4 +1,4 @@
-import { spawn, execSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import type { LLMProvider, ReviewResult } from "./types.js";
 
 /**
@@ -16,12 +16,19 @@ export class ClaudeCliProvider implements LLMProvider {
 
   private runClaudeCli(prompt: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      // Node.js 20+ の Windows では spawn(shell:false) が PATHEXT 経由で
-      // .cmd を解決しないため、事前にフルパスへ解決する
-      const command = resolveClaudeBinary();
-      const child = spawn(command, ["-p"], {
-        stdio: ["pipe", "pipe", "pipe"],
-      });
+      // Node.js 20+ の Windows では .cmd/.bat を直接 spawn できない
+      // (CVE-2024-27980 対応)。`shell:true` は DEP0190 を引き起こすため、
+      // cmd.exe 自体を spawn し、その中で claude を起動する。
+      // cmd.exe は .exe なので spawn の制限に該当しない。
+      const isWin = process.platform === "win32";
+      const child = isWin
+        ? spawn("cmd.exe", ["/d", "/s", "/c", "claude -p"], {
+            stdio: ["pipe", "pipe", "pipe"],
+            windowsVerbatimArguments: true,
+          })
+        : spawn("claude", ["-p"], {
+            stdio: ["pipe", "pipe", "pipe"],
+          });
 
       let stdout = "";
       let stderr = "";
@@ -51,38 +58,6 @@ export class ClaudeCliProvider implements LLMProvider {
       child.stdin.end();
     });
   }
-}
-
-/**
- * Claude CLI の実行ファイルパスを解決する。
- * Windows では `where claude` の結果から `.cmd`（npm globalのshim）を優先して返す。
- * 解決に失敗した場合はフォールバックとして "claude" / "claude.cmd" を返す。
- */
-function resolveClaudeBinary(): string {
-  if (process.platform !== "win32") return "claude";
-
-  try {
-    const output = execSync("where claude", {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const candidates = output
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    const cmdPath = candidates.find((line) => line.toLowerCase().endsWith(".cmd"));
-    if (cmdPath) return cmdPath;
-
-    const exePath = candidates.find((line) => line.toLowerCase().endsWith(".exe"));
-    if (exePath) return exePath;
-
-    if (candidates[0]) return candidates[0];
-  } catch {
-    // `where claude` が失敗した場合はフォールバックに任せる
-  }
-
-  return "claude.cmd";
 }
 
 function parseReviewResponse(raw: string): ReviewResult {
