@@ -11,6 +11,8 @@ export interface Rule {
   severity: Severity;
   /** 対象ファイルのglobパターン（未指定=全ファイル対象） */
   filePatterns: string[];
+  /** このルールが定義された行番号 (1-indexed)、重複検出用 */
+  lineNumber?: number;
 }
 
 export interface ParseError {
@@ -73,6 +75,19 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
       if (headerText.includes("(") && !headerText.includes(")")) {
         errors.push({ line: lineNumber, message: `Missing closing parenthesis in file scope: "${headerText}"` });
       }
+
+      // 空の括弧を検出
+      const emptyParenMatch = headerText.match(/\(\s*\)/);
+      if (emptyParenMatch) {
+        errors.push({ line: lineNumber, message: `Empty file scope parentheses: "${headerText}". Remove "()" or specify glob patterns inside.` });
+      }
+      continue;
+    }
+
+    // 空のチェックリスト項目を検出 (- [ ] の後にテキストなし)
+    const emptyRuleMatch = trimmed.match(/^-\s*\[[\s]?\]\s*$/);
+    if (emptyRuleMatch) {
+      errors.push({ line: lineNumber, message: `Empty rule. Checklist item has no text.` });
       continue;
     }
 
@@ -80,7 +95,7 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
     const ruleMatch = trimmed.match(/^-\s*\[[\s]?\]\s+(.+)$/);
     if (ruleMatch) {
       const rawText = ruleMatch[1].trim();
-      
+
       // 不正なseverityタグの検出（タイポ）
       const invalidTagMatch = rawText.match(/^!(err|warning|info|critical|block)\b/i);
       if (invalidTagMatch) {
@@ -88,11 +103,19 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
       }
 
       const { severity, text } = parseSeverity(rawText);
+
+      // severityタグ直後に本文がない場合
+      if (text.length === 0) {
+        errors.push({ line: lineNumber, message: `Empty rule. Checklist item has only a severity tag with no description.` });
+        continue;
+      }
+
       rules.push({
         group: currentGroup,
         text,
         severity,
         filePatterns: currentPatterns,
+        lineNumber,
       });
       continue;
     }
@@ -103,9 +126,24 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
       if (trimmed.match(/^[-*+]\s*\[(.*?)\]/)) {
         errors.push({ line: lineNumber, message: `Invalid rule format. Checkbox must be '- [ ]'. Found: "${trimmed}"` });
       }
-      
+
       // 通常のコンテキストとして収集
       contextLines.push(trimmed);
+    }
+  }
+
+  // 同一グループ内での重複ルールを検出
+  const seen = new Map<string, number>();
+  for (const rule of rules) {
+    const key = `${rule.group}\u0000${rule.text.toLowerCase()}`;
+    const firstLine = seen.get(key);
+    if (firstLine !== undefined) {
+      errors.push({
+        line: rule.lineNumber ?? 0,
+        message: `Duplicate rule in group "${rule.group}" (first defined at line ${firstLine}): "${rule.text}"`,
+      });
+    } else {
+      seen.set(key, rule.lineNumber ?? 0);
     }
   }
 

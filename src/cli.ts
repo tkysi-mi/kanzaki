@@ -11,6 +11,7 @@ import { parseRulesFile, filterRulesByFiles } from "./core/parser.js";
 import { getStagedChanges, getFileContexts, hasStagedChanges, getRepoRoot } from "./core/git.js";
 import { review } from "./core/reviewer.js";
 import { report } from "./core/reporter.js";
+import { writeFeedbackFile } from "./core/feedback.js";
 import {
   saveCredentials,
   clearCredentials,
@@ -53,6 +54,13 @@ export function createCli(): Command {
         console.log(chalk.green("✓ Created .kanzaki/rules.md"));
       }
 
+      // reviewsフォルダ（フィードバック出力先）はGit管理対象外にする
+      const kanzakiGitignore = resolve(rulesDir, ".gitignore");
+      if (!existsSync(kanzakiGitignore)) {
+        writeFileSync(kanzakiGitignore, "reviews/\n", "utf-8");
+        console.log(chalk.green("✓ Created .kanzaki/.gitignore"));
+      }
+
       console.log();
       console.log(chalk.dim("Edit .kanzaki/rules.md to customize your review rules."));
       console.log(chalk.dim("You can run 'kanzaki check' directly, or set it up with husky/lint-staged."));
@@ -68,6 +76,7 @@ export function createCli(): Command {
     .option("-r, --rules <path>", "Path to rules file", ".kanzaki/rules.md")
     .option("--api-key <key>", "API key (prefer KANZAKI_API_KEY env var)")
     .option("--no-block", "Warn only, don't block commit")
+    .option("-o, --emit-feedback", "Write feedback markdown (for coding agents) to .kanzaki/reviews/")
     .option("-v, --verbose", "Verbose output")
     .action(async (opts) => {
       try {
@@ -148,6 +157,16 @@ export function createCli(): Command {
         // 結果表示
         const { errorCount } = report(result, config.verbose);
 
+        // エージェント向けフィードバックの書き出し（オプトイン）
+        if (opts.emitFeedback) {
+          const rulesDir = dirname(resolve(config.rulesPath));
+          const reviewsDir = resolve(rulesDir, "reviews");
+          const feedbackPath = writeFeedbackFile(result, applicableRules, staged, reviewsDir);
+          if (feedbackPath) {
+            console.log(chalk.dim(`→ Feedback written to ${feedbackPath}`));
+          }
+        }
+
         // errorのみブロック（warnはブロックしない）
         if (errorCount > 0 && !config.noBlock) {
           process.exit(1);
@@ -159,15 +178,16 @@ export function createCli(): Command {
     });
 
   // ── login ─────────────────────────────────────────────
+  const SUPPORTED_PROVIDERS = ["openai", "anthropic"] as const;
+  type SupportedProvider = typeof SUPPORTED_PROVIDERS[number];
+
   program
     .command("login")
-    .description("Authenticate with OpenAI or Anthropic")
-    .option("--use-chatgpt", "Log in using ChatGPT Plus/Pro subscription (OAuth)")
-    .option("--use-claude", "Log in using Claude Pro subscription (Session token)")
-    .option("-p, --provider <provider>", "Provider: openai or anthropic", "openai")
+    .description("Authenticate with a supported LLM provider")
+    .option("-p, --provider <provider>", `Provider to use (${SUPPORTED_PROVIDERS.join(" / ")})`)
+    .option("--use-chatgpt", "Log in with ChatGPT Plus/Pro subscription (OAuth)")
+    .option("--use-claude", "Use the local Claude CLI as a subprocess")
     .action(async (opts) => {
-      const provider = opts.provider as "openai" | "anthropic";
-
       if (opts.useChatgpt) {
         // OpenAI OAuth Flow
 
@@ -214,10 +234,25 @@ export function createCli(): Command {
         console.log(chalk.dim("Kanzaki will invoke 'claude -p' for reviews, using your existing Claude CLI session."));
         console.log(chalk.dim("Credentials stored in ~/.config/kanzaki/credentials.json"));
       } else {
-        // API Key入力
-        const key = await promptSecret(
-          `Enter your ${provider === "openai" ? "OpenAI" : "Anthropic"} API key: `,
-        );
+        // API Key入力（--provider 必須）
+        if (!opts.provider) {
+          console.error(chalk.red("Authentication method is required."));
+          console.error(chalk.dim("Use one of:"));
+          console.error(chalk.dim(`  kanzaki login --provider <${SUPPORTED_PROVIDERS.join(" | ")}>   (API key)`));
+          console.error(chalk.dim("  kanzaki login --use-chatgpt                         (ChatGPT OAuth)"));
+          console.error(chalk.dim("  kanzaki login --use-claude                          (Claude CLI subprocess)"));
+          process.exit(1);
+        }
+
+        if (!SUPPORTED_PROVIDERS.includes(opts.provider as SupportedProvider)) {
+          console.error(chalk.red(`Unknown provider: ${opts.provider}`));
+          console.error(chalk.dim(`Supported providers: ${SUPPORTED_PROVIDERS.join(", ")}`));
+          process.exit(1);
+        }
+
+        const provider = opts.provider as SupportedProvider;
+        const label = provider === "openai" ? "OpenAI" : "Anthropic";
+        const key = await promptSecret(`Enter your ${label} API key: `);
 
         if (!key) {
           console.error(chalk.red("No API key provided."));
