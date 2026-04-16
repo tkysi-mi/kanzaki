@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 
 export type Severity = "error" | "warn";
+export type RuleScope = "diff" | "state";
 
 export interface Rule {
   /** ルールが属するグループ (Markdownのヘッダー) */
@@ -11,6 +12,10 @@ export interface Rule {
   severity: Severity;
   /** 対象ファイルのglobパターン（未指定=全ファイル対象） */
   filePatterns: string[];
+  /** 判定スコープ: diff = 差分のみ, state = ファイル現状全体 */
+  scope: RuleScope;
+  /** scope=state のとき、追加で読み込む（変更されていない）ファイルのglobパターン */
+  stateExtraPatterns: string[];
   /** このルールが定義された行番号 (1-indexed)、重複検出用 */
   lineNumber?: number;
 }
@@ -102,19 +107,32 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
         errors.push({ line: lineNumber, message: `Unknown severity tag "${invalidTagMatch[0]}". Use !error or !warn.` });
       }
 
-      const { severity, text } = parseSeverity(rawText);
+      // 不正な @state 構文（閉じ括弧忘れ）の検出
+      const unclosedScopeMatch = rawText.match(/@state\s*\([^)]*$/i);
+      if (unclosedScopeMatch) {
+        errors.push({ line: lineNumber, message: `Missing closing parenthesis in @state(...): "${rawText}"` });
+      }
+
+      const parsed = parseRuleTags(rawText);
 
       // severityタグ直後に本文がない場合
-      if (text.length === 0) {
-        errors.push({ line: lineNumber, message: `Empty rule. Checklist item has only a severity tag with no description.` });
+      if (parsed.text.length === 0) {
+        errors.push({ line: lineNumber, message: `Empty rule. Checklist item has only tag(s) with no description.` });
         continue;
+      }
+
+      // @state() のように空括弧
+      if (parsed.scopeHasEmptyParens) {
+        errors.push({ line: lineNumber, message: `Empty @state() parentheses. Use "@state" alone or "@state(<glob>, ...)".` });
       }
 
       rules.push({
         group: currentGroup,
-        text,
-        severity,
+        text: parsed.text,
+        severity: parsed.severity,
         filePatterns: currentPatterns,
+        scope: parsed.scope,
+        stateExtraPatterns: parsed.stateExtraPatterns,
         lineNumber,
       });
       continue;
@@ -173,21 +191,68 @@ function parseHeaderWithPatterns(header: string): { name: string; patterns: stri
 }
 
 /**
- * ルールテキストから重要度プレフィックスを抽出する。
- * `!error` / `!warn` が先頭にあればそれを使い、なければデフォルト error。
+ * ルールテキストから severity (`!error` / `!warn`) と scope (`@state[(globs)]`) を抽出する。
+ * タグの順序はどちらでもよく、混在も可。
  */
-function parseSeverity(rawText: string): { severity: Severity; text: string } {
-  const warnMatch = rawText.match(/^!warn\s+(.+)$/i);
-  if (warnMatch) {
-    return { severity: "warn", text: warnMatch[1].trim() };
+interface ParsedRuleTags {
+  severity: Severity;
+  scope: RuleScope;
+  stateExtraPatterns: string[];
+  text: string;
+  scopeHasEmptyParens: boolean;
+}
+
+function parseRuleTags(rawText: string): ParsedRuleTags {
+  let severity: Severity = "error";
+  let scope: RuleScope = "diff";
+  let stateExtraPatterns: string[] = [];
+  let scopeHasEmptyParens = false;
+  let text = rawText;
+
+  // 先頭のタグ列をループで剥がす（順序自由）
+  const severityRegex = /^!(error|warn)\b\s*/i;
+  const scopeRegex = /^@state(?:\(([^)]*)\))?\s*/i;
+
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+
+    const sevMatch = text.match(severityRegex);
+    if (sevMatch) {
+      severity = sevMatch[1].toLowerCase() === "warn" ? "warn" : "error";
+      text = text.slice(sevMatch[0].length);
+      progressed = true;
+      continue;
+    }
+
+    const scopeMatch = text.match(scopeRegex);
+    if (scopeMatch) {
+      scope = "state";
+      const inside = scopeMatch[1];
+      if (inside !== undefined) {
+        const trimmedInside = inside.trim();
+        if (trimmedInside.length === 0) {
+          scopeHasEmptyParens = true;
+        } else {
+          stateExtraPatterns = trimmedInside
+            .split(",")
+            .map((p) => p.trim())
+            .filter(Boolean);
+        }
+      }
+      text = text.slice(scopeMatch[0].length);
+      progressed = true;
+      continue;
+    }
   }
 
-  const errorMatch = rawText.match(/^!error\s+(.+)$/i);
-  if (errorMatch) {
-    return { severity: "error", text: errorMatch[1].trim() };
-  }
-
-  return { severity: "error", text: rawText };
+  return {
+    severity,
+    scope,
+    stateExtraPatterns,
+    text: text.trim(),
+    scopeHasEmptyParens,
+  };
 }
 
 /**
@@ -204,14 +269,19 @@ export function formatRulesForPrompt(rules: Rule[]): string {
 
   const sections: string[] = [];
   for (const [group, groupRules] of grouped) {
-    const scope = groupRules[0]?.filePatterns.length > 0
+    const fileScope = groupRules[0]?.filePatterns.length > 0
       ? ` (applies to: ${groupRules[0].filePatterns.join(", ")})`
       : "";
-    sections.push(`### ${group}${scope}`);
+    sections.push(`### ${group}${fileScope}`);
     for (let i = 0; i < groupRules.length; i++) {
       const r = groupRules[i];
-      const tag = r.severity === "warn" ? "[WARNING]" : "[ERROR]";
-      sections.push(`${i + 1}. ${tag} ${r.text}`);
+      const severity = r.severity === "warn" ? "WARNING" : "ERROR";
+      const meta = [`severity=${severity}`, `scope=${r.scope}`];
+      if (r.scope === "state" && r.stateExtraPatterns.length > 0) {
+        meta.push(`also_consult=${r.stateExtraPatterns.join("|")}`);
+      }
+      sections.push(`- Rule #${i + 1} [${meta.join(", ")}]`);
+      sections.push(`    text: ${r.text}`);
     }
     sections.push("");
   }

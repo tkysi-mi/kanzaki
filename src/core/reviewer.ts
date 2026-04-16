@@ -1,24 +1,35 @@
 import type { KanzakiConfig } from "../config.js";
 import type { Rule } from "./parser.js";
 import { formatRulesForPrompt } from "./parser.js";
-import type { FileContext, StagedChanges } from "./git.js";
+import type { FileContext, ReviewSource } from "./git.js";
 import type { LLMProvider, ReviewResult, Severity } from "../llm/types.js";
 import { OpenAIProvider } from "../llm/openai.js";
 import { AnthropicProvider } from "../llm/anthropic.js";
 import { ClaudeCliProvider } from "../llm/claude-cli.js";
 
-const SYSTEM_PROMPT = `You are a strict quality reviewer. Your job is to review changes (git diff) against a checklist of rules defined by the user.
+const SYSTEM_PROMPT = `You are a strict quality reviewer. Your job is to review a set of changes (or a snapshot of files) against a checklist of rules defined by the user.
 
 The rules may cover ANY domain — code, documentation, research, writing, presentations, design, or any other type of output. Evaluate each rule based on its intent, not just literal text matching.
 
-For each rule in the checklist, determine whether the staged changes comply with it.
+Each rule is printed as:
+
+    - Rule #N [severity=..., scope=..., (optional) also_consult=...]
+        text: <the rule text>
+
+The \`scope=\` field controls evaluation mode:
+- scope=diff  → Judge whether THIS CHANGE introduces a new violation. Pre-existing violations that the change does not touch should NOT cause the rule to fail.
+- scope=state → Judge whether the CURRENT STATE of the relevant files satisfies the rule, regardless of what was changed. Pre-existing violations SHOULD cause the rule to fail. Consult the full file contents, not just diff hunks.
+
+The \`also_consult=\` field (pipe-separated globs) lists extra files included in the prompt for cross-file state checks (e.g. glossary, schema).
+
+When returning results, the "rule" field MUST contain ONLY the text shown on the \`text:\` line — no "Rule #N" prefix, no severity/scope tags, no brackets, no numbering.
 
 IMPORTANT:
 - Rules marked [ERROR] are critical. Be strict when evaluating them.
 - Rules marked [WARNING] are advisory. Be fair but flag clear violations.
-- Only evaluate rules that are RELEVANT to the changes. If a rule clearly does not apply to the content being changed, mark it as passed with reason "Not applicable to these changes."
+- Only evaluate rules that are RELEVANT to the files under review. If a rule clearly does not apply, mark it as passed with reason "Not applicable."
 - Use the context section (if provided) to understand the project's goals and constraints.
-- Look at both the diff AND the full file context to make accurate judgments.
+- If no diff is provided (files-only review), treat every rule as a state check against the provided files.
 
 You MUST respond with valid JSON in this exact format:
 {
@@ -30,17 +41,17 @@ You MUST respond with valid JSON in this exact format:
 }`;
 
 /**
- * ステージされた変更をルールに照らし合わせてLLMでレビューする。
+ * 指定されたソース（staged/range/files等）をルールに照らしてLLMレビューする。
  */
 export async function review(
   config: KanzakiConfig,
   rules: Rule[],
-  staged: StagedChanges,
+  source: ReviewSource,
   fileContexts: FileContext[],
   rulesContext?: string,
 ): Promise<ReviewResult> {
   const provider = createProvider(config);
-  const userPrompt = buildUserPrompt(rules, staged, fileContexts, rulesContext);
+  const userPrompt = buildUserPrompt(rules, source, fileContexts, rulesContext);
 
   const rawResult = await provider.review(SYSTEM_PROMPT, userPrompt);
 
@@ -64,7 +75,7 @@ function createProvider(config: KanzakiConfig): LLMProvider {
 
 function buildUserPrompt(
   rules: Rule[],
-  staged: StagedChanges,
+  source: ReviewSource,
   fileContexts: FileContext[],
   rulesContext?: string,
 ): string {
@@ -77,20 +88,30 @@ function buildUserPrompt(
     parts.push("");
   }
 
+  // 起点情報
+  parts.push(`## Review Source\n`);
+  parts.push(`Source: ${source.label}`);
+  if (source.kind === "files") {
+    parts.push("Mode: files-only (no diff). Evaluate each rule against the current state of the files below.");
+  }
+  parts.push("");
+
   // ルール
   parts.push("## Checklist Rules\n");
   parts.push(formatRulesForPrompt(rules));
 
   // Diff
-  parts.push("## Staged Changes (git diff)\n");
-  parts.push("```diff");
-  parts.push(truncate(staged.diff, 50_000));
-  parts.push("```\n");
+  if (source.diff.trim().length > 0) {
+    parts.push("## Changes (git diff)\n");
+    parts.push("```diff");
+    parts.push(truncate(source.diff, 50_000));
+    parts.push("```\n");
+  }
 
   // ファイルコンテキスト
   if (fileContexts.length > 0) {
     parts.push("## Full File Context\n");
-    parts.push("The following are the full contents of modified files for additional context:\n");
+    parts.push("The following are the full contents of the files under review:\n");
     for (const ctx of fileContexts) {
       const ext = ctx.path.split(".").pop() ?? "";
       parts.push(`### ${ctx.path}\n`);

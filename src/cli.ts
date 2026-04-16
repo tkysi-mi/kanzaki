@@ -4,11 +4,16 @@ import { existsSync, writeFileSync, readFileSync, mkdirSync, chmodSync } from "n
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 
 import { loadConfig } from "./config.js";
-import { parseRulesFile, filterRulesByFiles } from "./core/parser.js";
-import { getStagedChanges, getFileContexts, hasStagedChanges, getRepoRoot } from "./core/git.js";
+import { parseRulesFile, filterRulesByFiles, type Rule } from "./core/parser.js";
+import {
+  getReviewSource,
+  getFileContextsForSource,
+  hasStagedChanges,
+  type ReviewSourceKind,
+} from "./core/git.js";
 import { review } from "./core/reviewer.js";
 import { report } from "./core/reporter.js";
 import { writeFeedbackFile } from "./core/feedback.js";
@@ -70,7 +75,7 @@ export function createCli(): Command {
   // ── check ─────────────────────────────────────────────
   program
     .command("check")
-    .description("Review staged changes against rules")
+    .description("Review changes against rules")
     .option("-p, --provider <provider>", "LLM provider (openai / anthropic)")
     .option("-m, --model <model>", "Model name")
     .option("-r, --rules <path>", "Path to rules file", ".kanzaki/rules.md")
@@ -78,10 +83,33 @@ export function createCli(): Command {
     .option("--no-block", "Warn only, don't block commit")
     .option("-o, --emit-feedback", "Write feedback markdown (for coding agents) to .kanzaki/reviews/")
     .option("-v, --verbose", "Verbose output")
+    .option("--working-tree", "Review working tree changes against HEAD (staged + unstaged)")
+    .option("--range <range>", "Review diff for a revision range (e.g. main..HEAD)")
+    .option("--files <paths...>", "Review current state of the specified files (no diff)")
     .action(async (opts) => {
       try {
-        // ステージされた変更の確認
-        if (!hasStagedChanges()) {
+        // 起点オプションの相互排他チェック
+        const sourceFlagsUsed = [
+          opts.workingTree ? "--working-tree" : null,
+          opts.range ? "--range" : null,
+          opts.files ? "--files" : null,
+        ].filter((v): v is string => v !== null);
+
+        if (sourceFlagsUsed.length > 1) {
+          console.error(chalk.red(`Cannot combine ${sourceFlagsUsed.join(" and ")}. Choose exactly one source.`));
+          process.exit(1);
+        }
+
+        const sourceKind: ReviewSourceKind = opts.workingTree
+          ? "workingTree"
+          : opts.range
+            ? "range"
+            : opts.files
+              ? "files"
+              : "staged";
+
+        // stagedモードのみ、早期終了チェック
+        if (sourceKind === "staged" && !hasStagedChanges()) {
           console.log(chalk.yellow("No staged changes found. Nothing to review."));
           process.exit(0);
         }
@@ -131,20 +159,36 @@ export function createCli(): Command {
           }
         }
 
-        // diff取得
-        const staged = getStagedChanges();
-        const fileContexts = getFileContexts(staged.files);
+        // 起点に応じてソース取得
+        const source = getReviewSource({
+          kind: sourceKind,
+          range: opts.range,
+          files: opts.files,
+        });
+
+        if (source.files.length === 0) {
+          console.log(chalk.yellow(`No files to review (source: ${source.label}).`));
+          process.exit(0);
+        }
 
         // ファイルスコープでルールをフィルタリング
-        const applicableRules = filterRulesByFiles(rules, staged.files);
+        const applicableRules = filterRulesByFiles(rules, source.files);
 
         if (applicableRules.length === 0) {
           console.log(chalk.yellow("No applicable rules for changed files. Skipping review."));
           process.exit(0);
         }
 
+        // @state(globs) で指定された追加ファイルを収集
+        const extraPaths = collectExtraStatePaths(applicableRules, source.files);
+        const fileContexts = getFileContextsForSource(source, extraPaths);
+
         if (config.verbose) {
-          console.log(chalk.dim(`Files changed: ${staged.files.join(", ")}`));
+          console.log(chalk.dim(`Source: ${source.label}`));
+          console.log(chalk.dim(`Files: ${source.files.join(", ")}`));
+          if (extraPaths.length > 0) {
+            console.log(chalk.dim(`Extra state files: ${extraPaths.join(", ")}`));
+          }
           if (applicableRules.length < rules.length) {
             console.log(chalk.dim(`Rules filtered: ${applicableRules.length}/${rules.length} applicable`));
           }
@@ -152,7 +196,7 @@ export function createCli(): Command {
 
         // LLMレビュー
         console.log(chalk.dim("Reviewing changes with LLM..."));
-        const result = await review(config, applicableRules, staged, fileContexts, rulesContext);
+        const result = await review(config, applicableRules, source, fileContexts, rulesContext);
 
         // 結果表示
         const { errorCount } = report(result, config.verbose);
@@ -161,7 +205,7 @@ export function createCli(): Command {
         if (opts.emitFeedback) {
           const rulesDir = dirname(resolve(config.rulesPath));
           const reviewsDir = resolve(rulesDir, "reviews");
-          const feedbackPath = writeFeedbackFile(result, applicableRules, staged, reviewsDir);
+          const feedbackPath = writeFeedbackFile(result, applicableRules, source, reviewsDir);
           if (feedbackPath) {
             console.log(chalk.dim(`→ Feedback written to ${feedbackPath}`));
           }
@@ -371,5 +415,48 @@ function promptSecret(prompt: string): Promise<string> {
 
     stdin.on("data", onData);
   });
+}
+
+/**
+ * @state(globs) に指定されたglobにマッチするファイルを、
+ * git ls-files から取得して返す（既に対象になっているファイルは除外）。
+ */
+function collectExtraStatePaths(rules: Rule[], alreadyIncluded: string[]): string[] {
+  const patterns = Array.from(
+    new Set(rules.flatMap((r) => r.stateExtraPatterns)),
+  );
+  if (patterns.length === 0) return [];
+
+  let trackedFiles: string[] = [];
+  try {
+    const raw = execFileSync("git", ["ls-files"], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    trackedFiles = raw.split("\n").map((f) => f.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+
+  const included = new Set(alreadyIncluded);
+  const matched = new Set<string>();
+  for (const file of trackedFiles) {
+    if (included.has(file)) continue;
+    if (patterns.some((p) => matchGlobSimple(file, p))) {
+      matched.add(file);
+    }
+  }
+  return Array.from(matched);
+}
+
+function matchGlobSimple(filePath: string, pattern: string): boolean {
+  const regexStr = pattern
+    .replace(/\./g, "\\.")
+    .replace(/\*\*/g, "{{DOUBLE_STAR}}")
+    .replace(/\*/g, "[^/]*")
+    .replace(/{{DOUBLE_STAR}}/g, ".*")
+    .replace(/\?/g, "[^/]");
+  const regex = new RegExp(`(^|/)${regexStr}$`, "i");
+  return regex.test(filePath);
 }
 

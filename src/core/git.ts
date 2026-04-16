@@ -1,85 +1,222 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, isAbsolute, relative } from "node:path";
 
-export interface StagedChanges {
-  /** git diff --staged の出力 */
+/**
+ * レビューの起点種別。
+ * - staged: `git diff --staged`（デフォルト、pre-commit用途）
+ * - workingTree: `git diff HEAD`（staged + unstaged）
+ * - range: `git diff <a..b>`（任意のリビジョン間、CI/PRレビュー用途）
+ * - files: 指定ファイルの現状を読むのみ（diffなし、git管理外もOK）
+ */
+export type ReviewSourceKind = "staged" | "workingTree" | "range" | "files";
+
+export interface ReviewSourceOptions {
+  kind: ReviewSourceKind;
+  /** range: "main..HEAD" のようなリビジョン指定 */
+  range?: string;
+  /** files: レビュー対象のファイルパス */
+  files?: string[];
+}
+
+export interface ReviewSource {
+  kind: ReviewSourceKind;
+  /** 人間向けの起点ラベル（例: "staged", "working tree", "range:main..HEAD", "files"） */
+  label: string;
+  /** 差分本文。files モードでは空文字 */
   diff: string;
-  /** 変更されたファイルのパス一覧 */
+  /** 対象ファイル一覧（リポジトリルートからの相対パス、または絶対パス） */
   files: string[];
 }
 
 export interface FileContext {
-  /** ファイルパス（リポジトリルートからの相対パス） */
+  /** ファイルパス（表示用） */
   path: string;
   /** ファイルの全文内容 */
   content: string;
 }
 
 /**
- * ステージされた変更のdiffとファイル一覧を取得する。
+ * 起点の種別に応じてdiffとファイル一覧を取得する。
  */
-export function getStagedChanges(): StagedChanges {
-  const diff = exec("git diff --staged");
-  const filesRaw = exec("git diff --staged --name-only");
-  const files = filesRaw
-    .split("\n")
-    .map((f) => f.trim())
-    .filter(Boolean);
-
-  return { diff, files };
+export function getReviewSource(opts: ReviewSourceOptions): ReviewSource {
+  switch (opts.kind) {
+    case "staged":
+      return getStagedSource();
+    case "workingTree":
+      return getWorkingTreeSource();
+    case "range":
+      if (!opts.range) throw new Error("range option is required for range source");
+      return getRangeSource(opts.range);
+    case "files":
+      if (!opts.files || opts.files.length === 0) {
+        throw new Error("files option requires at least one path");
+      }
+      return getFilesSource(opts.files);
+  }
 }
 
 /**
- * 変更されたファイルの全文内容を取得する（LLMへのコンテキスト用）。
- * バイナリファイルはスキップする。
+ * 指定起点に対応するファイルコンテキストを取得する。
+ * range の場合は終端リビジョンでの内容、それ以外は作業ツリー（filesystem）の内容を読む。
  */
-export function getFileContexts(files: string[]): FileContext[] {
-  const repoRoot = getRepoRoot();
+export function getFileContextsForSource(
+  source: ReviewSource,
+  extraPaths: string[] = [],
+): FileContext[] {
+  if (source.kind === "range") {
+    const endRef = extractEndRef(extractRangeFromLabel(source.label));
+    const paths = dedupe([...source.files, ...extraPaths]);
+    const contexts: FileContext[] = [];
+    for (const p of paths) {
+      if (isBinaryPath(p)) continue;
+      const content = readFileAtRef(endRef, p);
+      if (content === null) continue;
+      if (content.length > 100_000) continue;
+      contexts.push({ path: p, content });
+    }
+    return contexts;
+  }
+
   const contexts: FileContext[] = [];
+  const seen = new Set<string>();
+  const repoRoot = safeRepoRoot();
 
-  for (const file of files) {
-    const absPath = resolve(repoRoot, file);
-    if (!existsSync(absPath)) continue;
+  const collect = (path: string) => {
+    if (seen.has(path)) return;
+    seen.add(path);
 
-    // バイナリファイルの簡易判定
-    if (isBinaryPath(file)) continue;
+    if (isBinaryPath(path)) return;
 
+    const absPath = isAbsolute(path)
+      ? path
+      : repoRoot
+        ? resolve(repoRoot, path)
+        : resolve(process.cwd(), path);
+
+    if (!existsSync(absPath)) return;
     try {
       const content = readFileSync(absPath, "utf-8");
-      // 極端に大きいファイルはスキップ (100KB超)
-      if (content.length > 100_000) continue;
-      contexts.push({ path: file, content });
+      if (content.length > 100_000) return;
+      contexts.push({ path, content });
     } catch {
       // 読み取れないファイルはスキップ
     }
-  }
+  };
 
+  for (const f of source.files) collect(f);
+  for (const f of extraPaths) collect(f);
   return contexts;
 }
 
-/**
- * Gitリポジトリのルートディレクトリを取得する。
- */
-export function getRepoRoot(): string {
-  return exec("git rev-parse --show-toplevel").trim();
+function getStagedSource(): ReviewSource {
+  const diff = execGit(["diff", "--staged"]);
+  const files = splitFiles(execGit(["diff", "--staged", "--name-only"]));
+  return { kind: "staged", label: "staged", diff, files };
+}
+
+function getWorkingTreeSource(): ReviewSource {
+  const diff = execGit(["diff", "HEAD"]);
+  const files = splitFiles(execGit(["diff", "HEAD", "--name-only"]));
+  return { kind: "workingTree", label: "working tree (vs HEAD)", diff, files };
+}
+
+function getRangeSource(range: string): ReviewSource {
+  const diff = execGit(["diff", range]);
+  const files = splitFiles(execGit(["diff", range, "--name-only"]));
+  return { kind: "range", label: `range:${range}`, diff, files };
+}
+
+function getFilesSource(paths: string[]): ReviewSource {
+  const repoRoot = safeRepoRoot();
+  const normalized = paths.map((p) => {
+    if (!isAbsolute(p)) return p;
+    if (repoRoot) {
+      const rel = relative(repoRoot, p);
+      if (!rel.startsWith("..")) return rel.split("\\").join("/");
+    }
+    return p;
+  });
+  return { kind: "files", label: "files", diff: "", files: normalized };
 }
 
 /**
  * ステージされた変更があるかチェック。
  */
 export function hasStagedChanges(): boolean {
-  const output = exec("git diff --staged --name-only");
-  return output.trim().length > 0;
+  try {
+    const output = execGit(["diff", "--staged", "--name-only"]);
+    return output.trim().length > 0;
+  } catch {
+    return false;
+  }
 }
 
-function exec(command: string): string {
+/**
+ * Gitリポジトリのルートディレクトリを取得する。
+ */
+export function getRepoRoot(): string {
+  return execGit(["rev-parse", "--show-toplevel"]).trim();
+}
+
+function safeRepoRoot(): string | null {
   try {
-    return execSync(command, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+    return getRepoRoot();
+  } catch {
+    return null;
+  }
+}
+
+function execGit(args: string[]): string {
+  try {
+    return execFileSync("git", args, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
   } catch (error) {
     const err = error as { stderr?: string; message?: string };
-    throw new Error(`Git command failed: ${command}\n${err.stderr ?? err.message}`);
+    throw new Error(`Git command failed: git ${args.join(" ")}\n${err.stderr ?? err.message}`);
   }
+}
+
+function readFileAtRef(ref: string, path: string): string | null {
+  try {
+    return execFileSync("git", ["show", `${ref}:${path}`], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch {
+    return null;
+  }
+}
+
+function splitFiles(raw: string): string[] {
+  return raw
+    .split("\n")
+    .map((f) => f.trim())
+    .filter(Boolean);
+}
+
+function dedupe(arr: string[]): string[] {
+  return Array.from(new Set(arr));
+}
+
+function extractRangeFromLabel(label: string): string {
+  return label.startsWith("range:") ? label.slice("range:".length) : label;
+}
+
+/**
+ * "a..b" や "a...b" から終端リビジョンを取り出す。単一refの場合はそのまま返す。
+ */
+function extractEndRef(range: string): string {
+  const tripleIdx = range.indexOf("...");
+  if (tripleIdx >= 0) {
+    const end = range.slice(tripleIdx + 3).trim();
+    return end.length > 0 ? end : "HEAD";
+  }
+  const doubleIdx = range.indexOf("..");
+  if (doubleIdx >= 0) {
+    const end = range.slice(doubleIdx + 2).trim();
+    return end.length > 0 ? end : "HEAD";
+  }
+  return range;
 }
 
 const BINARY_EXTENSIONS = new Set([
@@ -94,6 +231,39 @@ const BINARY_EXTENSIONS = new Set([
 ]);
 
 function isBinaryPath(filePath: string): boolean {
-  const ext = filePath.slice(filePath.lastIndexOf(".")).toLowerCase();
-  return BINARY_EXTENSIONS.has(ext);
+  const dot = filePath.lastIndexOf(".");
+  if (dot < 0) return false;
+  return BINARY_EXTENSIONS.has(filePath.slice(dot).toLowerCase());
+}
+
+// ── 後方互換API ─────────────────────────────────────────
+
+export interface StagedChanges {
+  diff: string;
+  files: string[];
+}
+
+/** @deprecated use getReviewSource({kind:"staged"}) instead */
+export function getStagedChanges(): StagedChanges {
+  const s = getStagedSource();
+  return { diff: s.diff, files: s.files };
+}
+
+/** @deprecated use getFileContextsForSource instead */
+export function getFileContexts(files: string[]): FileContext[] {
+  const repoRoot = safeRepoRoot();
+  const contexts: FileContext[] = [];
+  for (const file of files) {
+    if (isBinaryPath(file)) continue;
+    const absPath = repoRoot ? resolve(repoRoot, file) : resolve(process.cwd(), file);
+    if (!existsSync(absPath)) continue;
+    try {
+      const content = readFileSync(absPath, "utf-8");
+      if (content.length > 100_000) continue;
+      contexts.push({ path: file, content });
+    } catch {
+      // skip
+    }
+  }
+  return contexts;
 }
