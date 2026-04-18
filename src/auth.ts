@@ -12,6 +12,13 @@ import { resolve } from "node:path";
 const CONFIG_DIR = resolve(homedir(), ".config", "kanzaki");
 const CREDENTIALS_PATH = resolve(CONFIG_DIR, "credentials.json");
 
+/**
+ * 認証情報ファイルの絶対パスを返す（プラットフォーム依存の表示用）。
+ */
+export function getCredentialsPath(): string {
+  return CREDENTIALS_PATH;
+}
+
 export interface StoredCredentials {
   provider: "openai" | "anthropic";
   apiKey: string;
@@ -62,12 +69,12 @@ export function saveCredentials(credentials: StoredCredentials): void {
 }
 
 /**
- * 保存済み認証情報を削除する。
+ * 保存済み認証情報を削除する。削除対象が存在したかどうかを返す。
  */
-export function clearCredentials(): void {
-  if (existsSync(CREDENTIALS_PATH)) {
-    unlinkSync(CREDENTIALS_PATH);
-  }
+export function clearCredentials(): boolean {
+  if (!existsSync(CREDENTIALS_PATH)) return false;
+  unlinkSync(CREDENTIALS_PATH);
+  return true;
 }
 
 /**

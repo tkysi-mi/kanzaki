@@ -7,6 +7,7 @@ import { Command } from "commander";
 import pc from "picocolors";
 import {
   clearCredentials,
+  getCredentialsPath,
   loadCredentials,
   loginWithOAuthPKCE,
   saveCredentials,
@@ -32,18 +33,30 @@ import { review } from "./core/reviewer.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+function loadPackageVersion(): string {
+  try {
+    const pkgPath = resolve(__dirname, "..", "package.json");
+    const raw = readFileSync(pkgPath, "utf-8");
+    return (JSON.parse(raw).version as string) ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
 export function createCli(): Command {
   const program = new Command();
 
   program
     .name("kanzaki")
-    .description("LLM-powered semantic pre-commit linter")
-    .version("0.3.2");
+    .description(
+      "LLM-powered semantic linter. Review git diffs or file snapshots against rules written in Markdown.",
+    )
+    .version(loadPackageVersion());
 
   // ── init ──────────────────────────────────────────────
   program
     .command("init")
-    .description("Create .kanzaki/rules.md rules file")
+    .description("Scaffold a starter rules file at .kanzaki/rules.md")
     .action(async () => {
       const cwd = process.cwd();
 
@@ -76,7 +89,7 @@ export function createCli(): Command {
       );
       console.log(
         pc.dim(
-          "You can run 'kanzaki check' directly, or set it up with husky/lint-staged.",
+          "Run 'kanzaki check' directly, or wire it into a pre-commit hook (e.g. Husky).",
         ),
       );
       console.log(pc.dim("Run 'kanzaki login' to authenticate."));
@@ -85,15 +98,15 @@ export function createCli(): Command {
   // ── check ─────────────────────────────────────────────
   program
     .command("check")
-    .description("Review changes against rules")
+    .description("Run a review against the rules file")
     .option("-p, --provider <provider>", "LLM provider (openai / anthropic)")
     .option("-m, --model <model>", "Model name")
     .option("-r, --rules <path>", "Path to rules file", ".kanzaki/rules.md")
     .option("--api-key <key>", "API key (prefer KANZAKI_API_KEY env var)")
-    .option("--no-block", "Warn only, don't block commit")
+    .option("--no-block", "Always exit 0, even when errors are found")
     .option(
       "-o, --emit-feedback",
-      "Write feedback markdown (for coding agents) to .kanzaki/reviews/ (default: true)",
+      "Write feedback markdown (for coding agents) to .kanzaki/reviews/",
       true,
     )
     .option("--no-emit-feedback", "Do not write feedback markdown")
@@ -112,11 +125,11 @@ export function createCli(): Command {
     )
     .option(
       "--all",
-      "Review all git-tracked files (no diff). Intended for small repos.",
+      "Review all git-tracked files (no diff). Best for small repositories.",
     )
     .option(
       "--max-bytes <n>",
-      "Maximum total review content bytes sent to the LLM (default 2000000)",
+      "Maximum payload size (bytes) sent to the LLM",
       (v) => Number.parseInt(v, 10),
       2_000_000,
     )
@@ -202,20 +215,22 @@ export function createCli(): Command {
           console.error(
             pc.bold(
               pc.red(
-                `\n❌ Found ${parseErrors.length} formatting error(s) in ${config.rulesPath}:`,
+                `\nFound ${parseErrors.length} formatting error(s) in ${config.rulesPath}:`,
               ),
             ),
           );
           parseErrors.forEach((err) => {
             console.error(pc.yellow(`  Line ${err.line}: `) + err.message);
           });
-          console.error(pc.dim("\nPlease fix these errors before committing."));
+          console.error(
+            pc.dim("\nFix these errors in the rules file, then re-run."),
+          );
           process.exit(1);
         }
 
         if (rules.length === 0) {
           console.log(
-            pc.yellow("No rules found in rules file. Skipping review."),
+            pc.yellow("No rules defined in the rules file. Skipping review."),
           );
           process.exit(0);
         }
@@ -260,7 +275,7 @@ export function createCli(): Command {
         if (applicableRules.length === 0) {
           console.log(
             pc.yellow(
-              "No applicable rules for changed files. Skipping review.",
+              "No applicable rules for the selected files. Skipping review.",
             ),
           );
           process.exit(0);
@@ -285,13 +300,11 @@ export function createCli(): Command {
         if (estimatedBytes > opts.maxBytes) {
           console.error(
             pc.red(
-              `Review content size ${estimatedBytes} bytes exceeds --max-bytes ${opts.maxBytes}.`,
+              `Review payload (${estimatedBytes} bytes) exceeds --max-bytes (${opts.maxBytes}).`,
             ),
           );
           console.error(
-            pc.dim(
-              "Narrow the scope (--range, --files) or raise --max-bytes. Default is 2000000.",
-            ),
+            pc.dim("Narrow the scope (--files, --range) or raise --max-bytes."),
           );
           process.exit(1);
         }
@@ -315,7 +328,7 @@ export function createCli(): Command {
         }
 
         // LLMレビュー
-        console.log(pc.dim("Reviewing changes with LLM..."));
+        console.log(pc.dim("Running LLM review..."));
         const result = await review(
           config,
           applicableRules,
@@ -372,7 +385,7 @@ export function createCli(): Command {
       if (opts.useChatgpt) {
         // OpenAI OAuth Flow
 
-        console.log(pc.dim("Starting OAuth Authorization Code Flow..."));
+        console.log(pc.dim("Starting ChatGPT OAuth login..."));
         try {
           const token = await loginWithOAuthPKCE();
 
@@ -387,10 +400,16 @@ export function createCli(): Command {
             expiresAt,
           });
 
-          console.log(pc.green("\n✓ Authenticated via OAuth"));
+          console.log(pc.green("\n✓ Logged in with ChatGPT (OAuth)"));
         } catch (error) {
-          console.error(pc.red(`OAuth failed: ${(error as Error).message}`));
-          console.error(pc.dim("Try 'kanzaki login' with an API key instead."));
+          console.error(
+            pc.red(`ChatGPT login failed: ${(error as Error).message}`),
+          );
+          console.error(
+            pc.dim(
+              "Alternatively, run 'kanzaki login --provider openai' to use an API key.",
+            ),
+          );
           process.exit(1);
         }
       } else if (opts.useClaude) {
@@ -422,16 +441,14 @@ export function createCli(): Command {
         console.log(pc.green("\n✓ Configured to use local Claude CLI"));
         console.log(
           pc.dim(
-            "Kanzaki will invoke 'claude -p' for reviews, using your existing Claude CLI session.",
+            "Kanzaki will invoke 'claude -p' for reviews, reusing your existing Claude CLI session.",
           ),
         );
-        console.log(
-          pc.dim("Credentials stored in ~/.config/kanzaki/credentials.json"),
-        );
+        console.log(pc.dim(`Credentials stored at ${getCredentialsPath()}`));
       } else {
         // API Key入力（--provider 必須）
         if (!opts.provider) {
-          console.error(pc.red("Authentication method is required."));
+          console.error(pc.red("Please specify an authentication method."));
           console.error(pc.dim("Use one of:"));
           console.error(
             pc.dim(
@@ -470,9 +487,7 @@ export function createCli(): Command {
 
         saveCredentials({ provider, apiKey: key });
         console.log(pc.green(`✓ Saved ${provider} credentials`));
-        console.log(
-          pc.dim("Credentials stored in ~/.config/kanzaki/credentials.json"),
-        );
+        console.log(pc.dim(`Credentials stored at ${getCredentialsPath()}`));
       }
     });
 
@@ -481,8 +496,12 @@ export function createCli(): Command {
     .command("logout")
     .description("Remove saved credentials")
     .action(() => {
-      clearCredentials();
-      console.log(pc.green("✓ Credentials removed"));
+      const removed = clearCredentials();
+      if (removed) {
+        console.log(pc.green("✓ Credentials removed"));
+      } else {
+        console.log(pc.dim("No saved credentials — nothing to remove."));
+      }
     });
 
   // ── status ────────────────────────────────────────────
@@ -511,7 +530,7 @@ export function createCli(): Command {
         const expired =
           creds.expiresAt && new Date(creds.expiresAt) < new Date();
         console.log(
-          `  Auth: ${pc.cyan("OAuth")}${expired ? pc.red(" (expired)") : pc.green(" (active)")}`,
+          `  Auth: ${pc.cyan("ChatGPT (OAuth)")}${expired ? pc.red(" (expired)") : pc.green(" (active)")}`,
         );
       } else {
         const masked = `${creds.apiKey.slice(0, 7)}...${creds.apiKey.slice(-4)}`;

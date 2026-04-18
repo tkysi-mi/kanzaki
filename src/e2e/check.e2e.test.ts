@@ -108,7 +108,7 @@ describe("kanzaki check (e2e)", () => {
       summary: "missing tests",
     });
     expect(res.exitCode).toBe(1);
-    expect(res.stdout).toContain("Commit blocked");
+    expect(res.stdout).toContain("Review failed");
     expect(res.stdout).toContain("no tests added");
   });
 
@@ -126,7 +126,7 @@ describe("kanzaki check (e2e)", () => {
       ["--no-block"],
     );
     expect(res.exitCode).toBe(0);
-    expect(res.stdout).toContain("commit allowed (--no-block)");
+    expect(res.stdout).toContain("not blocked (--no-block)");
   });
 
   it("writes a feedback markdown to .kanzaki/reviews/ by default on failure", async () => {

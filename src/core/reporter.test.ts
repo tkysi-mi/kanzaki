@@ -58,7 +58,7 @@ describe("report", () => {
     expect(out).toContain("1/3 passed");
     expect(out).toContain("1 errors");
     expect(out).toContain("1 warnings");
-    expect(out).toContain("Commit blocked due to errors.");
+    expect(out).toContain("Review failed");
     expect(out).toContain("bad error");
     expect(out).toContain("soft warn");
   });
@@ -72,11 +72,11 @@ describe("report", () => {
     };
     report(result, false, true);
     const out = joined();
-    expect(out).toContain("commit allowed (--no-block)");
-    expect(out).not.toContain("Commit blocked due to errors.");
+    expect(out).toContain("not blocked (--no-block)");
+    expect(out).not.toContain("Review failed");
   });
 
-  it("allows commit with a warning-only message when only warnings fail", () => {
+  it("uses a warning-only message when only warnings fail", () => {
     const result: ReviewResult = {
       results: [
         { rule: "a", passed: false, reason: "softfail", severity: "warn" },
@@ -84,7 +84,7 @@ describe("report", () => {
       summary: "",
     };
     report(result, false);
-    expect(joined()).toContain("Warnings found, but commit allowed");
+    expect(joined()).toContain("Warnings only — not blocking");
   });
 
   it("prints pass reasons only in verbose mode", () => {

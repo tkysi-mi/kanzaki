@@ -48,7 +48,7 @@ export function loadConfig(
   }
   if (!apiKey) {
     throw new Error(
-      "API key is required. Run 'kanzaki login' or set KANZAKI_API_KEY environment variable.",
+      "API key is required. Run 'kanzaki login' or set the KANZAKI_API_KEY environment variable.",
     );
   }
 

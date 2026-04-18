@@ -73,7 +73,9 @@ export class OpenAIProvider implements LLMProvider {
 
     if (!res.ok) {
       const errorBody = await res.text();
-      throw new Error(`${res.status} ${errorBody}`);
+      throw new Error(
+        `ChatGPT backend request failed (${res.status}): ${errorBody}`,
+      );
     }
 
     // SSEストリームからテキストを収集
@@ -85,7 +87,7 @@ export class OpenAIProvider implements LLMProvider {
   private async readSSEStream(res: Response): Promise<string> {
     const reader = res.body?.getReader();
     if (!reader) {
-      throw new Error("No response body");
+      throw new Error("ChatGPT backend returned no response body.");
     }
 
     const decoder = new TextDecoder();

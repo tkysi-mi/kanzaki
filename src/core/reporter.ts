@@ -65,14 +65,12 @@ export function report(
 
     if (errorCount > 0) {
       if (noBlock) {
-        console.log(
-          pc.yellow("\n  Errors found, but commit allowed (--no-block)."),
-        );
+        console.log(pc.yellow("\n  Errors found — not blocked (--no-block)."));
       } else {
-        console.log(pc.bold(pc.red("\n  Commit blocked due to errors.")));
+        console.log(pc.bold(pc.red("\n  Review failed — errors found.")));
       }
     } else {
-      console.log(pc.yellow("\n  Warnings found, but commit allowed."));
+      console.log(pc.yellow("\n  Warnings only — not blocking."));
     }
   }
 
