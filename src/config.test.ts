@@ -10,9 +10,15 @@ vi.mock("./auth.js", () => {
   let stored: StoredCredentials | null = null;
   return {
     loadCredentials: vi.fn(() => stored),
-    getActiveApiKey: vi.fn((c: StoredCredentials) =>
-      c.useClaudeCli ? "claude-cli" : (c.oauthToken ?? c.apiKey),
-    ),
+    getActiveApiKey: vi.fn((c: StoredCredentials) => {
+      if (c.useClaudeCli) return "claude-cli";
+      // 本物の getActiveApiKey と同じく、OAuth が期限切れなら apiKey にフォールバック
+      if (c.oauthToken) {
+        if (!c.expiresAt) return c.oauthToken;
+        if (new Date(c.expiresAt) > new Date()) return c.oauthToken;
+      }
+      return c.apiKey;
+    }),
     __setStored: (c: StoredCredentials | null) => {
       stored = c;
     },
@@ -96,6 +102,17 @@ describe("loadConfig", () => {
     const cfg = loadConfig();
     expect(cfg.useOAuth).toBe(true);
     expect(cfg.apiKey).toBe("oauth-tok");
+  });
+
+  it("throws a ChatGPT-specific error when the OAuth session has expired", () => {
+    authModule.__setStored({
+      provider: "openai",
+      apiKey: "",
+      oauthToken: "oauth-tok",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    expect(() => loadConfig()).toThrow(/ChatGPT OAuth session has expired/);
+    expect(() => loadConfig()).toThrow(/--use-chatgpt/);
   });
 
   it("sets useClaudeCli=true when stored creds request it", () => {

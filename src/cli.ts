@@ -396,7 +396,6 @@ export function createCli(): Command {
             provider: "openai",
             apiKey: "",
             oauthToken: token.access_token,
-            refreshToken: token.refresh_token,
             expiresAt,
           });
 

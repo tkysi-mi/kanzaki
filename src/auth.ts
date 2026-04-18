@@ -24,8 +24,6 @@ export interface StoredCredentials {
   apiKey: string;
   /** OAuth token (if authenticated via OAuth) */
   oauthToken?: string;
-  /** OAuth refresh token */
-  refreshToken?: string;
   /** Token expiry (ISO string) */
   expiresAt?: string;
   /** Claude CLIをサブプロセスとして利用するフラグ */
@@ -116,7 +114,6 @@ const REDIRECT_URI = "http://localhost:1455/auth/callback";
 
 export interface TokenResponse {
   access_token: string;
-  refresh_token?: string;
   expires_in: number;
 }
 

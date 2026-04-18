@@ -47,6 +47,18 @@ export function loadConfig(
     apiKey = getActiveApiKey(stored);
   }
   if (!apiKey) {
+    // OAuth トークンが期限切れのケースを特別扱いする。
+    // getActiveApiKey は黙って creds.apiKey にフォールバックするため、
+    // OAuth専用ユーザーは "API key is required" という意味不明なエラーを見ることになる。
+    if (
+      stored?.oauthToken &&
+      stored.expiresAt &&
+      new Date(stored.expiresAt) < new Date()
+    ) {
+      throw new Error(
+        "Your ChatGPT OAuth session has expired. Run 'kanzaki login --use-chatgpt' to re-authenticate.",
+      );
+    }
     throw new Error(
       "API key is required. Run 'kanzaki login' or set the KANZAKI_API_KEY environment variable.",
     );
