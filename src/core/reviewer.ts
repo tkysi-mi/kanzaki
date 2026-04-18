@@ -157,5 +157,5 @@ function mapSeverities(result: RawReviewResult, rules: Rule[]): ReviewResult {
  */
 function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength) + "\n\n... (truncated)";
+  return `${text.slice(0, maxLength)}\n\n... (truncated)`;
 }

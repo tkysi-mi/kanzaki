@@ -451,8 +451,7 @@ export function createCli(): Command {
           `  Auth: ${pc.cyan("OAuth")}${expired ? pc.red(" (expired)") : pc.green(" (active)")}`,
         );
       } else {
-        const masked =
-          creds.apiKey.slice(0, 7) + "..." + creds.apiKey.slice(-4);
+        const masked = `${creds.apiKey.slice(0, 7)}...${creds.apiKey.slice(-4)}`;
         console.log(`  Auth: ${pc.cyan("API Key")} (${masked})`);
       }
     });
