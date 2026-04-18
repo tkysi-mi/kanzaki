@@ -2,7 +2,7 @@ import type { KanzakiConfig } from "../config.js";
 import type { Rule } from "./parser.js";
 import { formatRulesForPrompt } from "./parser.js";
 import type { FileContext, ReviewSource } from "./git.js";
-import type { LLMProvider, ReviewResult, Severity } from "../llm/types.js";
+import type { LLMProvider, RawReviewResult, ReviewResult, Severity } from "../llm/types.js";
 import { OpenAIProvider } from "../llm/openai.js";
 import { AnthropicProvider } from "../llm/anthropic.js";
 import { ClaudeCliProvider } from "../llm/claude-cli.js";
@@ -125,10 +125,10 @@ function buildUserPrompt(
 }
 
 /**
- * LLMレスポンスのresultsにルール定義側のseverityを付与する。
- * ルールテキストのマッチングで紐付ける。
+ * LLMからの生レスポンス（severityなし）にルール定義側のseverityを付与して
+ * ReviewResultへ昇格させる。ルールテキストのマッチングで紐付ける。
  */
-function mapSeverities(result: ReviewResult, rules: Rule[]): ReviewResult {
+function mapSeverities(result: RawReviewResult, rules: Rule[]): ReviewResult {
   const severityMap = new Map<string, Severity>();
   for (const rule of rules) {
     severityMap.set(rule.text.toLowerCase(), rule.severity);

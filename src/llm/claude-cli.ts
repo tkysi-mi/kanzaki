@@ -1,17 +1,18 @@
 import { spawn } from "node:child_process";
-import type { LLMProvider, ReviewResult } from "./types.js";
+import type { LLMProvider, RawReviewResult } from "./types.js";
+import { parseReviewResponse } from "./parse.js";
 
 /**
  * ローカルのClaude CLI (`claude -p`) をサブプロセスとして呼び出すプロバイダー。
  * OpenClawと同じ方式で、Claude CLIが認証・セッション管理を担当する。
  */
 export class ClaudeCliProvider implements LLMProvider {
-  async review(systemPrompt: string, userPrompt: string): Promise<ReviewResult> {
+  async review(systemPrompt: string, userPrompt: string): Promise<RawReviewResult> {
     // systemとuserを1つのプロンプトに結合してstdinで渡す
     const combinedPrompt = `${systemPrompt}\n\n---\n\n${userPrompt}`;
 
     const output = await this.runClaudeCli(combinedPrompt);
-    return parseReviewResponse(output);
+    return parseReviewResponse(output, "Claude CLI");
   }
 
   private runClaudeCli(prompt: string): Promise<string> {
@@ -57,30 +58,5 @@ export class ClaudeCliProvider implements LLMProvider {
       child.stdin.write(prompt);
       child.stdin.end();
     });
-  }
-}
-
-function parseReviewResponse(raw: string): ReviewResult {
-  // Claude CLIはコードブロック内にJSONを返すことがあるため抽出を試みる
-  const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const jsonStr = jsonMatch ? jsonMatch[1].trim() : raw.trim();
-
-  try {
-    const parsed = JSON.parse(jsonStr);
-
-    if (!Array.isArray(parsed.results)) {
-      throw new Error("Response missing 'results' array.");
-    }
-
-    return {
-      results: parsed.results.map((r: Record<string, unknown>) => ({
-        rule: String(r.rule ?? ""),
-        passed: Boolean(r.passed),
-        reason: String(r.reason ?? ""),
-      })),
-      summary: String(parsed.summary ?? ""),
-    };
-  } catch (error) {
-    throw new Error(`Failed to parse Claude CLI response as JSON:\n${raw}\n\n${error}`);
   }
 }
