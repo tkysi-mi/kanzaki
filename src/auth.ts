@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { homedir } from "node:os";
 
@@ -34,12 +34,20 @@ export function loadCredentials(): StoredCredentials | null {
 
 /**
  * 認証情報を ~/.config/kanzaki/credentials.json に保存する。
+ * Unix系では 0600 権限を設定して本人以外読めないようにする。
  */
 export function saveCredentials(credentials: StoredCredentials): void {
   if (!existsSync(CONFIG_DIR)) {
     mkdirSync(CONFIG_DIR, { recursive: true });
   }
   writeFileSync(CREDENTIALS_PATH, JSON.stringify(credentials, null, 2), "utf-8");
+  if (process.platform !== "win32") {
+    try {
+      chmodSync(CREDENTIALS_PATH, 0o600);
+    } catch {
+      // 権限設定失敗は致命的でないのでスキップ
+    }
+  }
 }
 
 /**
@@ -47,16 +55,8 @@ export function saveCredentials(credentials: StoredCredentials): void {
  */
 export function clearCredentials(): void {
   if (existsSync(CREDENTIALS_PATH)) {
-    writeFileSync(CREDENTIALS_PATH, "{}", "utf-8");
+    unlinkSync(CREDENTIALS_PATH);
   }
-}
-
-/**
- * 認証情報が保存されているか確認する。
- */
-export function hasCredentials(): boolean {
-  const creds = loadCredentials();
-  return creds !== null && (!!creds.apiKey || !!creds.oauthToken || !!creds.useClaudeCli);
 }
 
 /**
@@ -126,6 +126,15 @@ export async function loginWithOAuthPKCE(): Promise<TokenResponse> {
   }
 
   return new Promise((resolve, reject) => {
+    let timeout: NodeJS.Timeout | undefined;
+
+    const finish = (result: TokenResponse | Error) => {
+      if (timeout) clearTimeout(timeout);
+      server.close();
+      if (result instanceof Error) reject(result);
+      else resolve(result);
+    };
+
     const server = createServer(async (req, res) => {
       try {
         if (!req.url?.startsWith('/auth/callback')) {
@@ -143,28 +152,23 @@ export async function loginWithOAuthPKCE(): Promise<TokenResponse> {
         if (error) {
           res.writeHead(400, { 'Content-Type': 'text/html' });
           res.end(`<h1>Authentication Failed</h1><p>${error}: ${errorDesc || 'Unknown error'}</p>`);
-          server.close();
-          return reject(new Error(`OAuth error: ${error} - ${errorDesc}`));
+          return finish(new Error(`OAuth error: ${error} - ${errorDesc}`));
         }
 
         if (!code) {
           res.writeHead(400);
           res.end("Missing authorization code");
-          server.close();
-          return reject(new Error("No authorization code received"));
+          return finish(new Error("No authorization code received"));
         }
 
         if (returnedState !== state) {
            res.writeHead(400);
            res.end("Invalid state");
-           server.close();
-           return reject(new Error("OAuth state mismatch"));
+           return finish(new Error("OAuth state mismatch"));
         }
 
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end("<h1>Authentication Successful!</h1><p>You can close this tab and return to your terminal.</p>");
-
-        server.close();
 
         // Exchange code for token
         const tokenRes = await fetch(OPENAI_TOKEN_URL, {
@@ -181,19 +185,27 @@ export async function loginWithOAuthPKCE(): Promise<TokenResponse> {
 
         if (!tokenRes.ok) {
           const body = await tokenRes.text();
-          return reject(new Error(`Token exchange failed: ${tokenRes.status} ${body}`));
+          return finish(new Error(`Token exchange failed: ${tokenRes.status} ${body}`));
         }
 
         const tokenData = await tokenRes.json() as TokenResponse;
-        resolve(tokenData);
+        finish(tokenData);
 
       } catch (err) {
          res.writeHead(500);
          res.end("Internal Server Error");
-         server.close();
-         reject(err);
+         finish(err instanceof Error ? err : new Error(String(err)));
       }
     });
+
+    server.on("error", (err) => {
+      finish(new Error(`OAuth callback server failed to start: ${err.message}`));
+    });
+
+    // 5分経ってもコールバックが来なければタイムアウト
+    timeout = setTimeout(() => {
+      finish(new Error("OAuth authentication timed out after 5 minutes"));
+    }, 5 * 60 * 1000);
 
     server.listen(1455, 'localhost');
   });

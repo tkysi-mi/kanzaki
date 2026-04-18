@@ -1,17 +1,18 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { existsSync, writeFileSync, readFileSync, mkdirSync, chmodSync } from "node:fs";
+import { existsSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
-import { execSync, execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 
 import { loadConfig } from "./config.js";
-import { parseRulesFile, filterRulesByFiles, type Rule } from "./core/parser.js";
+import { parseRulesFile, filterRulesByFiles, matchGlob, type Rule } from "./core/parser.js";
 import {
   getReviewSource,
   getFileContextsForSource,
   hasStagedChanges,
+  listTrackedFiles,
   type ReviewSourceKind,
 } from "./core/git.js";
 import { review } from "./core/reviewer.js";
@@ -21,7 +22,6 @@ import {
   saveCredentials,
   clearCredentials,
   loadCredentials,
-  hasCredentials,
   loginWithOAuthPKCE,
 } from "./auth.js";
 
@@ -121,7 +121,7 @@ export function createCli(): Command {
           model: opts.model,
           rulesPath: opts.rules,
           verbose: opts.verbose ?? false,
-          noBlock: opts.noBlock === false, // commander の --no-block は block=false にする
+          noBlock: opts.block === false, // commander の --no-block は opts.block=false を生成する
         });
 
         // ルールファイルの存在確認
@@ -199,7 +199,7 @@ export function createCli(): Command {
         const result = await review(config, applicableRules, source, fileContexts, rulesContext);
 
         // 結果表示
-        const { errorCount } = report(result, config.verbose);
+        const { errorCount } = report(result, config.verbose, config.noBlock);
 
         // エージェント向けフィードバックの書き出し（オプトイン）
         if (opts.emitFeedback) {
@@ -427,36 +427,17 @@ function collectExtraStatePaths(rules: Rule[], alreadyIncluded: string[]): strin
   );
   if (patterns.length === 0) return [];
 
-  let trackedFiles: string[] = [];
-  try {
-    const raw = execFileSync("git", ["ls-files"], {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    trackedFiles = raw.split("\n").map((f) => f.trim()).filter(Boolean);
-  } catch {
-    return [];
-  }
+  const trackedFiles = listTrackedFiles();
+  if (trackedFiles.length === 0) return [];
 
   const included = new Set(alreadyIncluded);
   const matched = new Set<string>();
   for (const file of trackedFiles) {
     if (included.has(file)) continue;
-    if (patterns.some((p) => matchGlobSimple(file, p))) {
+    if (patterns.some((p) => matchGlob(file, p))) {
       matched.add(file);
     }
   }
   return Array.from(matched);
-}
-
-function matchGlobSimple(filePath: string, pattern: string): boolean {
-  const regexStr = pattern
-    .replace(/\./g, "\\.")
-    .replace(/\*\*/g, "{{DOUBLE_STAR}}")
-    .replace(/\*/g, "[^/]*")
-    .replace(/{{DOUBLE_STAR}}/g, ".*")
-    .replace(/\?/g, "[^/]");
-  const regex = new RegExp(`(^|/)${regexStr}$`, "i");
-  return regex.test(filePath);
 }
 
