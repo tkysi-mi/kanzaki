@@ -108,6 +108,16 @@ export function createCli(): Command {
       "--files <paths...>",
       "Review current state of the specified files (no diff)",
     )
+    .option(
+      "--all",
+      "Review all git-tracked files (no diff). Intended for small repos.",
+    )
+    .option(
+      "--max-bytes <n>",
+      "Maximum total review content bytes sent to the LLM (default 2000000)",
+      (v) => Number.parseInt(v, 10),
+      2_000_000,
+    )
     .action(async (opts) => {
       try {
         // 起点オプションの相互排他チェック
@@ -115,6 +125,7 @@ export function createCli(): Command {
           opts.workingTree ? "--working-tree" : null,
           opts.range ? "--range" : null,
           opts.files ? "--files" : null,
+          opts.all ? "--all" : null,
         ].filter((v): v is string => v !== null);
 
         if (sourceFlagsUsed.length > 1) {
@@ -126,11 +137,32 @@ export function createCli(): Command {
           process.exit(1);
         }
 
+        if (!Number.isFinite(opts.maxBytes) || opts.maxBytes <= 0) {
+          console.error(
+            pc.red(`Invalid --max-bytes value: ${opts.maxBytes}. Must be > 0.`),
+          );
+          process.exit(1);
+        }
+
+        // --all はトラッキング中の全ファイルを --files 相当で渡す
+        let resolvedFiles = opts.files as string[] | undefined;
+        if (opts.all) {
+          resolvedFiles = listTrackedFiles();
+          if (resolvedFiles.length === 0) {
+            console.log(
+              pc.yellow(
+                "No git-tracked files found. Is this a git repository?",
+              ),
+            );
+            process.exit(0);
+          }
+        }
+
         const sourceKind: ReviewSourceKind = opts.workingTree
           ? "workingTree"
           : opts.range
             ? "range"
-            : opts.files
+            : opts.files || opts.all
               ? "files"
               : "staged";
 
@@ -207,8 +239,11 @@ export function createCli(): Command {
         const source = getReviewSource({
           kind: sourceKind,
           range: opts.range,
-          files: opts.files,
+          files: resolvedFiles,
         });
+        if (opts.all) {
+          source.label = "all tracked files";
+        }
 
         if (source.files.length === 0) {
           console.log(
@@ -236,8 +271,34 @@ export function createCli(): Command {
         );
         const fileContexts = getFileContextsForSource(source, extraPaths);
 
+        // LLMに送る総バイト数が上限を超えていたら事前に止める。
+        // diffとファイル全文はそれぞれ50KB/20KBで個別にtruncateされるため、
+        // 実際に送られる量で見積もる。
+        const estimatedBytes =
+          Math.min(source.diff.length, 50_000) +
+          fileContexts.reduce(
+            (sum, ctx) => sum + Math.min(ctx.content.length, 20_000),
+            0,
+          );
+        if (estimatedBytes > opts.maxBytes) {
+          console.error(
+            pc.red(
+              `Review content size ${estimatedBytes} bytes exceeds --max-bytes ${opts.maxBytes}.`,
+            ),
+          );
+          console.error(
+            pc.dim(
+              "Narrow the scope (--range, --files) or raise --max-bytes. Default is 2000000.",
+            ),
+          );
+          process.exit(1);
+        }
+
         if (config.verbose) {
           console.log(pc.dim(`Source: ${source.label}`));
+          console.log(
+            pc.dim(`Content size: ${estimatedBytes}/${opts.maxBytes} bytes`),
+          );
           console.log(pc.dim(`Files: ${source.files.join(", ")}`));
           if (extraPaths.length > 0) {
             console.log(pc.dim(`Extra state files: ${extraPaths.join(", ")}`));
