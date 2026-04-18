@@ -38,7 +38,7 @@ export function createCli(): Command {
   program
     .name("kanzaki")
     .description("LLM-powered semantic pre-commit linter")
-    .version("0.3.0");
+    .version("0.3.2");
 
   // ── init ──────────────────────────────────────────────
   program
