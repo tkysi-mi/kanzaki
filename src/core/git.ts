@@ -159,6 +159,18 @@ export function getRepoRoot(): string {
   return execGit(["rev-parse", "--show-toplevel"]).trim();
 }
 
+/**
+ * `git ls-files` で追跡対象のファイル一覧を取得する。
+ * Gitコマンドが失敗した場合は空配列を返す（kanzaki 実行中にfatalエラーにしない）。
+ */
+export function listTrackedFiles(): string[] {
+  try {
+    return splitFiles(execGit(["ls-files"]));
+  } catch {
+    return [];
+  }
+}
+
 function safeRepoRoot(): string | null {
   try {
     return getRepoRoot();
@@ -236,34 +248,3 @@ function isBinaryPath(filePath: string): boolean {
   return BINARY_EXTENSIONS.has(filePath.slice(dot).toLowerCase());
 }
 
-// ── 後方互換API ─────────────────────────────────────────
-
-export interface StagedChanges {
-  diff: string;
-  files: string[];
-}
-
-/** @deprecated use getReviewSource({kind:"staged"}) instead */
-export function getStagedChanges(): StagedChanges {
-  const s = getStagedSource();
-  return { diff: s.diff, files: s.files };
-}
-
-/** @deprecated use getFileContextsForSource instead */
-export function getFileContexts(files: string[]): FileContext[] {
-  const repoRoot = safeRepoRoot();
-  const contexts: FileContext[] = [];
-  for (const file of files) {
-    if (isBinaryPath(file)) continue;
-    const absPath = repoRoot ? resolve(repoRoot, file) : resolve(process.cwd(), file);
-    if (!existsSync(absPath)) continue;
-    try {
-      const content = readFileSync(absPath, "utf-8");
-      if (content.length > 100_000) continue;
-      contexts.push({ path: file, content });
-    } catch {
-      // skip
-    }
-  }
-  return contexts;
-}

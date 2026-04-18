@@ -175,9 +175,13 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
 /**
  * ヘッダーテキストからグループ名とファイルパターンを分離する。
  * 例: "Security (*.ts, *.js)" → { name: "Security", patterns: ["*.ts", "*.js"] }
+ *
+ * 複数括弧がある場合は **最後** の括弧グループをファイルスコープと解釈する。
+ * 例: "Notes (draft) (*.md)" → { name: "Notes (draft)", patterns: ["*.md"] }
  */
 function parseHeaderWithPatterns(header: string): { name: string; patterns: string[] } {
-  const match = header.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  // 貪欲マッチで末尾の `(...)` を拾う。内側に `(` `)` を含まないものに限定。
+  const match = header.match(/^(.+)\s*\(([^()]+)\)\s*$/);
   if (match) {
     const name = match[1].trim();
     const patterns = match[2]
@@ -308,8 +312,11 @@ export function filterRulesByFiles(rules: Rule[], changedFiles: string[]): Rule[
 /**
  * シンプルなglobマッチング。
  * *.ts, *.md, docs/*, **\/*.test.ts 等の基本パターンに対応。
+ *
+ * 注: `(^|/)` アンカーを使用するため、`src/*.ts` は任意の深さの `src/`
+ * ディレクトリにマッチする（例: `app/src/foo.ts` も対象）。
  */
-function matchGlob(filePath: string, pattern: string): boolean {
+export function matchGlob(filePath: string, pattern: string): boolean {
   // パターンを正規表現に変換
   const regexStr = pattern
     .replace(/\./g, "\\.")
