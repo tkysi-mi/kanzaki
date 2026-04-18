@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import dotenv from "dotenv";
 import { getActiveApiKey, loadCredentials } from "./auth.js";
 
 export interface KanzakiConfig {
@@ -28,10 +27,10 @@ const DEFAULT_MODELS: Record<string, string> = {
 export function loadConfig(
   overrides: Partial<KanzakiConfig> = {},
 ): KanzakiConfig {
-  // .env ファイルがあれば読み込む
+  // .env ファイルがあれば読み込む (Node 20.6+ 標準 API)
   const envPath = resolve(process.cwd(), ".env");
   if (existsSync(envPath)) {
-    dotenv.config({ path: envPath });
+    process.loadEnvFile(envPath);
   }
 
   // 保存済みクレデンシャルを読み込む
