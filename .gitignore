@@ -11,6 +11,9 @@ credentials.json
 .vscode/
 .idea/
 
+# drafts / personal writing (blog posts, notes, etc.)
+articles/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -3,6 +3,16 @@
   "version": "0.3.2",
   "description": "LLM-powered semantic pre-commit linter. Define rules in Markdown, review diffs with AI.",
   "type": "module",
+  "author": "tkysi-mi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tkysi-mi/kanzaki.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tkysi-mi/kanzaki/issues"
+  },
+  "homepage": "https://github.com/tkysi-mi/kanzaki#readme",
   "bin": {
     "kanzaki": "dist/bin.js"
   },
@@ -10,8 +20,9 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --exclude 'src/e2e/**'",
+    "test:watch": "vitest --exclude 'src/e2e/**'",
+    "test:e2e": "npm run build && vitest run src/e2e",
     "lint": "biome check src",
     "format": "biome format --write src",
     "check": "biome check --write src",
@@ -36,7 +47,6 @@
     "code-review",
     "semantic"
   ],
-  "license": "MIT",
   "engines": {
     "node": ">=20.6"
   },
@@ -52,6 +62,8 @@
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
     "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "execa": "^9.6.1",
     "husky": "^9.1.7",
     "knip": "^6.4.1",
     "lint-staged": "^16.4.0",

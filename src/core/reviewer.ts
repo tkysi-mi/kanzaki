@@ -12,7 +12,7 @@ import type { FileContext, ReviewSource } from "./git.js";
 import type { Rule } from "./parser.js";
 import { formatRulesForPrompt } from "./parser.js";
 
-const SYSTEM_PROMPT = `You are a strict quality reviewer. Your job is to review a set of changes (or a snapshot of files) against a checklist of rules defined by the user.
+export const SYSTEM_PROMPT = `You are a strict quality reviewer. Your job is to review a set of changes (or a snapshot of files) against a checklist of rules defined by the user.
 
 The rules may cover ANY domain — code, documentation, research, writing, presentations, design, or any other type of output. Evaluate each rule based on its intent, not just literal text matching.
 
@@ -65,6 +65,14 @@ export async function review(
 }
 
 function createProvider(config: KanzakiConfig): LLMProvider {
+  // E2E テスト用フック: KANZAKI_MOCK_RESPONSE に JSON を入れると、LLM を呼ばず
+  // そのレスポンスをそのまま返す。本番フローには影響しない（env 未設定時はスキップ）。
+  const mock = process.env.KANZAKI_MOCK_RESPONSE;
+  if (mock) {
+    const parsed = JSON.parse(mock) as RawReviewResult;
+    return { review: async () => parsed };
+  }
+
   switch (config.provider) {
     case "openai":
       return new OpenAIProvider(config.apiKey, config.model, config.useOAuth);
@@ -78,7 +86,7 @@ function createProvider(config: KanzakiConfig): LLMProvider {
   }
 }
 
-function buildUserPrompt(
+export function buildUserPrompt(
   rules: Rule[],
   source: ReviewSource,
   fileContexts: FileContext[],
@@ -137,7 +145,10 @@ function buildUserPrompt(
  * LLMからの生レスポンス（severityなし）にルール定義側のseverityを付与して
  * ReviewResultへ昇格させる。ルールテキストのマッチングで紐付ける。
  */
-function mapSeverities(result: RawReviewResult, rules: Rule[]): ReviewResult {
+export function mapSeverities(
+  result: RawReviewResult,
+  rules: Rule[],
+): ReviewResult {
   const severityMap = new Map<string, Severity>();
   for (const rule of rules) {
     severityMap.set(rule.text.toLowerCase(), rule.severity);
@@ -155,7 +166,7 @@ function mapSeverities(result: RawReviewResult, rules: Rule[]): ReviewResult {
 /**
  * テキストを指定文字数で切り詰める。
  */
-function truncate(text: string, maxLength: number): string {
+export function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}\n\n... (truncated)`;
 }
