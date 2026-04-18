@@ -360,8 +360,3 @@ export function matchGlob(filePath: string, pattern: string): boolean {
   const regex = new RegExp(`(^|/)${regexStr}$`, "i");
   return regex.test(filePath);
 }
-
-// 後方互換: 旧APIを維持
-export function parseRules(filePath: string): Rule[] {
-  return parseRulesFile(filePath).rules;
-}

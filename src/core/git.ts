@@ -154,13 +154,6 @@ export function hasStagedChanges(): boolean {
 }
 
 /**
- * Gitリポジトリのルートディレクトリを取得する。
- */
-export function getRepoRoot(): string {
-  return execGit(["rev-parse", "--show-toplevel"]).trim();
-}
-
-/**
  * `git ls-files` で追跡対象のファイル一覧を取得する。
  * Gitコマンドが失敗した場合は空配列を返す（kanzaki 実行中にfatalエラーにしない）。
  */
@@ -174,7 +167,7 @@ export function listTrackedFiles(): string[] {
 
 function safeRepoRoot(): string | null {
   try {
-    return getRepoRoot();
+    return execGit(["rev-parse", "--show-toplevel"]).trim();
   } catch {
     return null;
   }
