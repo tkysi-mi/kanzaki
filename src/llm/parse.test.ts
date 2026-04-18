@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parseReviewResponse } from "./parse.js";
 
 describe("parseReviewResponse", () => {
@@ -10,11 +10,16 @@ describe("parseReviewResponse", () => {
     const parsed = parseReviewResponse(raw);
     expect(parsed.summary).toBe("s");
     expect(parsed.results).toHaveLength(1);
-    expect(parsed.results[0]).toEqual({ rule: "a", passed: true, reason: "ok" });
+    expect(parsed.results[0]).toEqual({
+      rule: "a",
+      passed: true,
+      reason: "ok",
+    });
   });
 
   it("strips ```json fence", () => {
-    const raw = '```json\n{"results":[{"rule":"x","passed":false,"reason":"y"}],"summary":"z"}\n```';
+    const raw =
+      '```json\n{"results":[{"rule":"x","passed":false,"reason":"y"}],"summary":"z"}\n```';
     const parsed = parseReviewResponse(raw);
     expect(parsed.results[0].passed).toBe(false);
     expect(parsed.summary).toBe("z");
@@ -37,7 +42,9 @@ describe("parseReviewResponse", () => {
   });
 
   it("throws on invalid JSON, including source label", () => {
-    expect(() => parseReviewResponse("not json", "Claude CLI")).toThrow(/Claude CLI/);
+    expect(() => parseReviewResponse("not json", "Claude CLI")).toThrow(
+      /Claude CLI/,
+    );
   });
 
   it("does not include severity in output", () => {

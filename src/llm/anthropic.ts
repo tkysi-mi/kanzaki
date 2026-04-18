@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { LLMProvider, RawReviewResult } from "./types.js";
 import { parseReviewResponse } from "./parse.js";
+import type { LLMProvider, RawReviewResult } from "./types.js";
 
 export class AnthropicProvider implements LLMProvider {
   private client: Anthropic;
@@ -11,7 +11,10 @@ export class AnthropicProvider implements LLMProvider {
     this.model = model;
   }
 
-  async review(systemPrompt: string, userPrompt: string): Promise<RawReviewResult> {
+  async review(
+    systemPrompt: string,
+    userPrompt: string,
+  ): Promise<RawReviewResult> {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 4096,

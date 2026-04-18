@@ -1,6 +1,6 @@
 import OpenAI from "openai";
-import type { LLMProvider, RawReviewResult } from "./types.js";
 import { parseReviewResponse } from "./parse.js";
+import type { LLMProvider, RawReviewResult } from "./types.js";
 
 // ChatGPT OAuth時のベースURL（Codex CLIと同じ）
 const CHATGPT_BASE_URL = "https://chatgpt.com/backend-api/codex";
@@ -16,14 +16,20 @@ export class OpenAIProvider implements LLMProvider {
     this.useOAuth = useOAuth;
   }
 
-  async review(systemPrompt: string, userPrompt: string): Promise<RawReviewResult> {
+  async review(
+    systemPrompt: string,
+    userPrompt: string,
+  ): Promise<RawReviewResult> {
     if (this.useOAuth) {
       return this.reviewWithCodexBackend(systemPrompt, userPrompt);
     }
     return this.reviewWithChatCompletions(systemPrompt, userPrompt);
   }
 
-  private async reviewWithChatCompletions(systemPrompt: string, userPrompt: string): Promise<RawReviewResult> {
+  private async reviewWithChatCompletions(
+    systemPrompt: string,
+    userPrompt: string,
+  ): Promise<RawReviewResult> {
     const client = new OpenAI({ apiKey: this.apiKey });
     const response = await client.chat.completions.create({
       model: this.model,
@@ -43,14 +49,15 @@ export class OpenAIProvider implements LLMProvider {
     return parseReviewResponse(content, "OpenAI");
   }
 
-  private async reviewWithCodexBackend(systemPrompt: string, userPrompt: string): Promise<RawReviewResult> {
+  private async reviewWithCodexBackend(
+    systemPrompt: string,
+    userPrompt: string,
+  ): Promise<RawReviewResult> {
     const url = `${CHATGPT_BASE_URL}/responses`;
     const body = {
       model: this.model,
       instructions: systemPrompt,
-      input: [
-        { role: "user", content: userPrompt },
-      ],
+      input: [{ role: "user", content: userPrompt }],
       store: false,
       stream: true,
     };
@@ -59,7 +66,7 @@ export class OpenAIProvider implements LLMProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(body),
     });

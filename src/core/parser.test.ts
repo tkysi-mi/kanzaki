@@ -1,14 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  parseRulesFromContent,
   filterRulesByFiles,
   formatRulesForPrompt,
   matchGlob,
+  parseRulesFromContent,
 } from "./parser.js";
 
 describe("parseRulesFromContent", () => {
   it("parses a simple rule with default severity=error and scope=diff", () => {
-    const { rules, errors } = parseRulesFromContent("## Quality\n- [ ] 一貫性を保つ\n");
+    const { rules, errors } = parseRulesFromContent(
+      "## Quality\n- [ ] 一貫性を保つ\n",
+    );
     expect(errors).toEqual([]);
     expect(rules).toHaveLength(1);
     expect(rules[0]).toMatchObject({
@@ -78,7 +80,9 @@ describe("parseRulesFromContent", () => {
 
   it("flags unclosed @state parens", () => {
     const { errors } = parseRulesFromContent("- [ ] @state(*.md foo\n");
-    expect(errors.some((e) => /missing closing parenthesis/i.test(e.message))).toBe(true);
+    expect(
+      errors.some((e) => /missing closing parenthesis/i.test(e.message)),
+    ).toBe(true);
   });
 
   it("flags duplicate rules within the same group", () => {

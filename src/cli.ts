@@ -1,29 +1,33 @@
-import { Command } from "commander";
-import chalk from "chalk";
-import { existsSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createInterface } from "node:readline";
 import { execSync } from "node:child_process";
-
-import { loadConfig } from "./config.js";
-import { parseRulesFile, filterRulesByFiles, matchGlob, type Rule } from "./core/parser.js";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
+import chalk from "chalk";
+import { Command } from "commander";
 import {
-  getReviewSource,
+  clearCredentials,
+  loadCredentials,
+  loginWithOAuthPKCE,
+  saveCredentials,
+} from "./auth.js";
+import { loadConfig } from "./config.js";
+import { writeFeedbackFile } from "./core/feedback.js";
+import {
   getFileContextsForSource,
+  getReviewSource,
   hasStagedChanges,
   listTrackedFiles,
   type ReviewSourceKind,
 } from "./core/git.js";
-import { review } from "./core/reviewer.js";
-import { report } from "./core/reporter.js";
-import { writeFeedbackFile } from "./core/feedback.js";
 import {
-  saveCredentials,
-  clearCredentials,
-  loadCredentials,
-  loginWithOAuthPKCE,
-} from "./auth.js";
+  filterRulesByFiles,
+  matchGlob,
+  parseRulesFile,
+  type Rule,
+} from "./core/parser.js";
+import { report } from "./core/reporter.js";
+import { review } from "./core/reviewer.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,13 +50,15 @@ export function createCli(): Command {
       // ルールファイル作成
       const rulesPath = resolve(cwd, ".kanzaki", "rules.md");
       const rulesDir = dirname(rulesPath);
-      
+
       if (!existsSync(rulesDir)) {
         mkdirSync(rulesDir, { recursive: true });
       }
 
       if (existsSync(rulesPath)) {
-        console.log(chalk.yellow("⚠ .kanzaki/rules.md already exists, skipping."));
+        console.log(
+          chalk.yellow("⚠ .kanzaki/rules.md already exists, skipping."),
+        );
       } else {
         const template = loadTemplate();
         writeFileSync(rulesPath, template, "utf-8");
@@ -67,8 +73,14 @@ export function createCli(): Command {
       }
 
       console.log();
-      console.log(chalk.dim("Edit .kanzaki/rules.md to customize your review rules."));
-      console.log(chalk.dim("You can run 'kanzaki check' directly, or set it up with husky/lint-staged."));
+      console.log(
+        chalk.dim("Edit .kanzaki/rules.md to customize your review rules."),
+      );
+      console.log(
+        chalk.dim(
+          "You can run 'kanzaki check' directly, or set it up with husky/lint-staged.",
+        ),
+      );
       console.log(chalk.dim("Run 'kanzaki login' to authenticate."));
     });
 
@@ -81,11 +93,23 @@ export function createCli(): Command {
     .option("-r, --rules <path>", "Path to rules file", ".kanzaki/rules.md")
     .option("--api-key <key>", "API key (prefer KANZAKI_API_KEY env var)")
     .option("--no-block", "Warn only, don't block commit")
-    .option("-o, --emit-feedback", "Write feedback markdown (for coding agents) to .kanzaki/reviews/")
+    .option(
+      "-o, --emit-feedback",
+      "Write feedback markdown (for coding agents) to .kanzaki/reviews/",
+    )
     .option("-v, --verbose", "Verbose output")
-    .option("--working-tree", "Review working tree changes against HEAD (staged + unstaged)")
-    .option("--range <range>", "Review diff for a revision range (e.g. main..HEAD)")
-    .option("--files <paths...>", "Review current state of the specified files (no diff)")
+    .option(
+      "--working-tree",
+      "Review working tree changes against HEAD (staged + unstaged)",
+    )
+    .option(
+      "--range <range>",
+      "Review diff for a revision range (e.g. main..HEAD)",
+    )
+    .option(
+      "--files <paths...>",
+      "Review current state of the specified files (no diff)",
+    )
     .action(async (opts) => {
       try {
         // 起点オプションの相互排他チェック
@@ -96,7 +120,11 @@ export function createCli(): Command {
         ].filter((v): v is string => v !== null);
 
         if (sourceFlagsUsed.length > 1) {
-          console.error(chalk.red(`Cannot combine ${sourceFlagsUsed.join(" and ")}. Choose exactly one source.`));
+          console.error(
+            chalk.red(
+              `Cannot combine ${sourceFlagsUsed.join(" and ")}. Choose exactly one source.`,
+            ),
+          );
           process.exit(1);
         }
 
@@ -110,7 +138,9 @@ export function createCli(): Command {
 
         // stagedモードのみ、早期終了チェック
         if (sourceKind === "staged" && !hasStagedChanges()) {
-          console.log(chalk.yellow("No staged changes found. Nothing to review."));
+          console.log(
+            chalk.yellow("No staged changes found. Nothing to review."),
+          );
           process.exit(0);
         }
 
@@ -132,19 +162,31 @@ export function createCli(): Command {
         }
 
         // ルール解析
-        const { rules, context: rulesContext, errors: parseErrors } = parseRulesFile(config.rulesPath);
+        const {
+          rules,
+          context: rulesContext,
+          errors: parseErrors,
+        } = parseRulesFile(config.rulesPath);
 
         if (parseErrors && parseErrors.length > 0) {
-          console.error(chalk.red.bold(`\n❌ Found ${parseErrors.length} formatting error(s) in ${config.rulesPath}:`));
+          console.error(
+            chalk.red.bold(
+              `\n❌ Found ${parseErrors.length} formatting error(s) in ${config.rulesPath}:`,
+            ),
+          );
           parseErrors.forEach((err) => {
             console.error(chalk.yellow(`  Line ${err.line}: `) + err.message);
           });
-          console.error(chalk.dim("\nPlease fix these errors before committing."));
+          console.error(
+            chalk.dim("\nPlease fix these errors before committing."),
+          );
           process.exit(1);
         }
 
         if (rules.length === 0) {
-          console.log(chalk.yellow("No rules found in rules file. Skipping review."));
+          console.log(
+            chalk.yellow("No rules found in rules file. Skipping review."),
+          );
           process.exit(0);
         }
 
@@ -152,10 +194,18 @@ export function createCli(): Command {
         const warnRules = rules.filter((r) => r.severity === "warn").length;
 
         if (config.verbose) {
-          console.log(chalk.dim(`Provider: ${config.provider} (${config.model})`));
-          console.log(chalk.dim(`Rules: ${errorRules} errors, ${warnRules} warnings`));
+          console.log(
+            chalk.dim(`Provider: ${config.provider} (${config.model})`),
+          );
+          console.log(
+            chalk.dim(`Rules: ${errorRules} errors, ${warnRules} warnings`),
+          );
           if (rulesContext) {
-            console.log(chalk.dim(`Context: ${rulesContext.length} chars of additional context`));
+            console.log(
+              chalk.dim(
+                `Context: ${rulesContext.length} chars of additional context`,
+              ),
+            );
           }
         }
 
@@ -167,7 +217,9 @@ export function createCli(): Command {
         });
 
         if (source.files.length === 0) {
-          console.log(chalk.yellow(`No files to review (source: ${source.label}).`));
+          console.log(
+            chalk.yellow(`No files to review (source: ${source.label}).`),
+          );
           process.exit(0);
         }
 
@@ -175,28 +227,47 @@ export function createCli(): Command {
         const applicableRules = filterRulesByFiles(rules, source.files);
 
         if (applicableRules.length === 0) {
-          console.log(chalk.yellow("No applicable rules for changed files. Skipping review."));
+          console.log(
+            chalk.yellow(
+              "No applicable rules for changed files. Skipping review.",
+            ),
+          );
           process.exit(0);
         }
 
         // @state(globs) で指定された追加ファイルを収集
-        const extraPaths = collectExtraStatePaths(applicableRules, source.files);
+        const extraPaths = collectExtraStatePaths(
+          applicableRules,
+          source.files,
+        );
         const fileContexts = getFileContextsForSource(source, extraPaths);
 
         if (config.verbose) {
           console.log(chalk.dim(`Source: ${source.label}`));
           console.log(chalk.dim(`Files: ${source.files.join(", ")}`));
           if (extraPaths.length > 0) {
-            console.log(chalk.dim(`Extra state files: ${extraPaths.join(", ")}`));
+            console.log(
+              chalk.dim(`Extra state files: ${extraPaths.join(", ")}`),
+            );
           }
           if (applicableRules.length < rules.length) {
-            console.log(chalk.dim(`Rules filtered: ${applicableRules.length}/${rules.length} applicable`));
+            console.log(
+              chalk.dim(
+                `Rules filtered: ${applicableRules.length}/${rules.length} applicable`,
+              ),
+            );
           }
         }
 
         // LLMレビュー
         console.log(chalk.dim("Reviewing changes with LLM..."));
-        const result = await review(config, applicableRules, source, fileContexts, rulesContext);
+        const result = await review(
+          config,
+          applicableRules,
+          source,
+          fileContexts,
+          rulesContext,
+        );
 
         // 結果表示
         const { errorCount } = report(result, config.verbose, config.noBlock);
@@ -205,7 +276,12 @@ export function createCli(): Command {
         if (opts.emitFeedback) {
           const rulesDir = dirname(resolve(config.rulesPath));
           const reviewsDir = resolve(rulesDir, "reviews");
-          const feedbackPath = writeFeedbackFile(result, applicableRules, source, reviewsDir);
+          const feedbackPath = writeFeedbackFile(
+            result,
+            applicableRules,
+            source,
+            reviewsDir,
+          );
           if (feedbackPath) {
             console.log(chalk.dim(`→ Feedback written to ${feedbackPath}`));
           }
@@ -223,24 +299,31 @@ export function createCli(): Command {
 
   // ── login ─────────────────────────────────────────────
   const SUPPORTED_PROVIDERS = ["openai", "anthropic"] as const;
-  type SupportedProvider = typeof SUPPORTED_PROVIDERS[number];
+  type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
 
   program
     .command("login")
     .description("Authenticate with a supported LLM provider")
-    .option("-p, --provider <provider>", `Provider to use (${SUPPORTED_PROVIDERS.join(" / ")})`)
-    .option("--use-chatgpt", "Log in with ChatGPT Plus/Pro subscription (OAuth)")
+    .option(
+      "-p, --provider <provider>",
+      `Provider to use (${SUPPORTED_PROVIDERS.join(" / ")})`,
+    )
+    .option(
+      "--use-chatgpt",
+      "Log in with ChatGPT Plus/Pro subscription (OAuth)",
+    )
     .option("--use-claude", "Use the local Claude CLI as a subprocess")
     .action(async (opts) => {
       if (opts.useChatgpt) {
         // OpenAI OAuth Flow
 
-
         console.log(chalk.dim("Starting OAuth Authorization Code Flow..."));
         try {
           const token = await loginWithOAuthPKCE();
 
-          const expiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();
+          const expiresAt = new Date(
+            Date.now() + token.expires_in * 1000,
+          ).toISOString();
           saveCredentials({
             provider: "openai",
             apiKey: "",
@@ -252,7 +335,9 @@ export function createCli(): Command {
           console.log(chalk.green("\n✓ Authenticated via OAuth"));
         } catch (error) {
           console.error(chalk.red(`OAuth failed: ${(error as Error).message}`));
-          console.error(chalk.dim("Try 'kanzaki login' with an API key instead."));
+          console.error(
+            chalk.dim("Try 'kanzaki login' with an API key instead."),
+          );
           process.exit(1);
         }
       } else if (opts.useClaude) {
@@ -260,11 +345,18 @@ export function createCli(): Command {
         console.log(chalk.dim("Checking local Claude CLI installation..."));
 
         try {
-          const version = execSync("claude --version", { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+          const version = execSync("claude --version", {
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+          }).trim();
           console.log(chalk.dim(`Found: ${version}`));
         } catch {
           console.error(chalk.red("Claude CLI not found."));
-          console.error(chalk.dim("Install it from https://docs.claude.com/en/docs/claude-code and run 'claude login' first."));
+          console.error(
+            chalk.dim(
+              "Install it from https://docs.claude.com/en/docs/claude-code and run 'claude login' first.",
+            ),
+          );
           process.exit(1);
         }
 
@@ -275,22 +367,42 @@ export function createCli(): Command {
         });
 
         console.log(chalk.green("\n✓ Configured to use local Claude CLI"));
-        console.log(chalk.dim("Kanzaki will invoke 'claude -p' for reviews, using your existing Claude CLI session."));
-        console.log(chalk.dim("Credentials stored in ~/.config/kanzaki/credentials.json"));
+        console.log(
+          chalk.dim(
+            "Kanzaki will invoke 'claude -p' for reviews, using your existing Claude CLI session.",
+          ),
+        );
+        console.log(
+          chalk.dim("Credentials stored in ~/.config/kanzaki/credentials.json"),
+        );
       } else {
         // API Key入力（--provider 必須）
         if (!opts.provider) {
           console.error(chalk.red("Authentication method is required."));
           console.error(chalk.dim("Use one of:"));
-          console.error(chalk.dim(`  kanzaki login --provider <${SUPPORTED_PROVIDERS.join(" | ")}>   (API key)`));
-          console.error(chalk.dim("  kanzaki login --use-chatgpt                         (ChatGPT OAuth)"));
-          console.error(chalk.dim("  kanzaki login --use-claude                          (Claude CLI subprocess)"));
+          console.error(
+            chalk.dim(
+              `  kanzaki login --provider <${SUPPORTED_PROVIDERS.join(" | ")}>   (API key)`,
+            ),
+          );
+          console.error(
+            chalk.dim(
+              "  kanzaki login --use-chatgpt                         (ChatGPT OAuth)",
+            ),
+          );
+          console.error(
+            chalk.dim(
+              "  kanzaki login --use-claude                          (Claude CLI subprocess)",
+            ),
+          );
           process.exit(1);
         }
 
         if (!SUPPORTED_PROVIDERS.includes(opts.provider as SupportedProvider)) {
           console.error(chalk.red(`Unknown provider: ${opts.provider}`));
-          console.error(chalk.dim(`Supported providers: ${SUPPORTED_PROVIDERS.join(", ")}`));
+          console.error(
+            chalk.dim(`Supported providers: ${SUPPORTED_PROVIDERS.join(", ")}`),
+          );
           process.exit(1);
         }
 
@@ -305,7 +417,9 @@ export function createCli(): Command {
 
         saveCredentials({ provider, apiKey: key });
         console.log(chalk.green(`✓ Saved ${provider} credentials`));
-        console.log(chalk.dim("Credentials stored in ~/.config/kanzaki/credentials.json"));
+        console.log(
+          chalk.dim("Credentials stored in ~/.config/kanzaki/credentials.json"),
+        );
       }
     });
 
@@ -324,7 +438,10 @@ export function createCli(): Command {
     .description("Show authentication status")
     .action(() => {
       const creds = loadCredentials();
-      if (!creds || (!creds.apiKey && !creds.oauthToken && !creds.useClaudeCli)) {
+      if (
+        !creds ||
+        (!creds.apiKey && !creds.oauthToken && !creds.useClaudeCli)
+      ) {
         console.log(chalk.yellow("Not authenticated."));
         console.log(chalk.dim("Run 'kanzaki login' to authenticate."));
         return;
@@ -334,12 +451,18 @@ export function createCli(): Command {
       console.log(`  Provider: ${chalk.cyan(creds.provider)}`);
 
       if (creds.useClaudeCli) {
-        console.log(`  Auth: ${chalk.cyan("Claude CLI subprocess")} ${chalk.green("(active)")}`);
+        console.log(
+          `  Auth: ${chalk.cyan("Claude CLI subprocess")} ${chalk.green("(active)")}`,
+        );
       } else if (creds.oauthToken) {
-        const expired = creds.expiresAt && new Date(creds.expiresAt) < new Date();
-        console.log(`  Auth: ${chalk.cyan("OAuth")}${expired ? chalk.red(" (expired)") : chalk.green(" (active)")}`);
+        const expired =
+          creds.expiresAt && new Date(creds.expiresAt) < new Date();
+        console.log(
+          `  Auth: ${chalk.cyan("OAuth")}${expired ? chalk.red(" (expired)") : chalk.green(" (active)")}`,
+        );
       } else {
-        const masked = creds.apiKey.slice(0, 7) + "..." + creds.apiKey.slice(-4);
+        const masked =
+          creds.apiKey.slice(0, 7) + "..." + creds.apiKey.slice(-4);
         console.log(`  Auth: ${chalk.cyan("API Key")} (${masked})`);
       }
     });
@@ -421,7 +544,10 @@ function promptSecret(prompt: string): Promise<string> {
  * @state(globs) に指定されたglobにマッチするファイルを、
  * git ls-files から取得して返す（既に対象になっているファイルは除外）。
  */
-function collectExtraStatePaths(rules: Rule[], alreadyIncluded: string[]): string[] {
+function collectExtraStatePaths(
+  rules: Rule[],
+  alreadyIncluded: string[],
+): string[] {
   const patterns = Array.from(
     new Set(rules.flatMap((r) => r.stateExtraPatterns)),
   );
@@ -440,4 +566,3 @@ function collectExtraStatePaths(rules: Rule[], alreadyIncluded: string[]): strin
   }
   return Array.from(matched);
 }
-

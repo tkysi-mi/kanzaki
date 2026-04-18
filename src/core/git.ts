@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
-import { resolve, isAbsolute, relative } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { isAbsolute, relative, resolve } from "node:path";
 
 /**
  * レビューの起点種別。
@@ -46,7 +46,8 @@ export function getReviewSource(opts: ReviewSourceOptions): ReviewSource {
     case "workingTree":
       return getWorkingTreeSource();
     case "range":
-      if (!opts.range) throw new Error("range option is required for range source");
+      if (!opts.range)
+        throw new Error("range option is required for range source");
       return getRangeSource(opts.range);
     case "files":
       if (!opts.files || opts.files.length === 0) {
@@ -181,10 +182,15 @@ function safeRepoRoot(): string | null {
 
 function execGit(args: string[]): string {
   try {
-    return execFileSync("git", args, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+    return execFileSync("git", args, {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
   } catch (error) {
     const err = error as { stderr?: string; message?: string };
-    throw new Error(`Git command failed: git ${args.join(" ")}\n${err.stderr ?? err.message}`);
+    throw new Error(
+      `Git command failed: git ${args.join(" ")}\n${err.stderr ?? err.message}`,
+    );
   }
 }
 
@@ -232,13 +238,40 @@ function extractEndRef(range: string): string {
 }
 
 const BINARY_EXTENSIONS = new Set([
-  ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".svg",
-  ".mp4", ".webm", ".mov", ".avi",
-  ".mp3", ".wav", ".ogg",
-  ".zip", ".tar", ".gz", ".rar", ".7z",
-  ".pdf", ".doc", ".docx", ".xls", ".xlsx",
-  ".woff", ".woff2", ".ttf", ".eot", ".otf",
-  ".exe", ".dll", ".so", ".dylib",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".bmp",
+  ".ico",
+  ".webp",
+  ".svg",
+  ".mp4",
+  ".webm",
+  ".mov",
+  ".avi",
+  ".mp3",
+  ".wav",
+  ".ogg",
+  ".zip",
+  ".tar",
+  ".gz",
+  ".rar",
+  ".7z",
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".eot",
+  ".otf",
+  ".exe",
+  ".dll",
+  ".so",
+  ".dylib",
   ".lock",
 ]);
 
@@ -247,4 +280,3 @@ function isBinaryPath(filePath: string): boolean {
   if (dot < 0) return false;
   return BINARY_EXTENSIONS.has(filePath.slice(dot).toLowerCase());
 }
-

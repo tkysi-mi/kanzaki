@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import dotenv from "dotenv";
-import { loadCredentials, getActiveApiKey } from "./auth.js";
+import { getActiveApiKey, loadCredentials } from "./auth.js";
 
 export interface KanzakiConfig {
   provider: "openai" | "anthropic";
@@ -25,7 +25,9 @@ const DEFAULT_MODELS: Record<string, string> = {
  * CLI引数とenv変数からKanzaki設定をロードする。
  * 優先順位: CLIフラグ → env変数 → 保存済みクレデンシャル
  */
-export function loadConfig(overrides: Partial<KanzakiConfig> = {}): KanzakiConfig {
+export function loadConfig(
+  overrides: Partial<KanzakiConfig> = {},
+): KanzakiConfig {
   // .env ファイルがあれば読み込む
   const envPath = resolve(process.cwd(), ".env");
   if (existsSync(envPath)) {
@@ -35,12 +37,10 @@ export function loadConfig(overrides: Partial<KanzakiConfig> = {}): KanzakiConfi
   // 保存済みクレデンシャルを読み込む
   const stored = loadCredentials();
 
-  const provider = (
-    overrides.provider
-    ?? process.env.KANZAKI_PROVIDER
-    ?? stored?.provider
-    ?? "openai"
-  ) as KanzakiConfig["provider"];
+  const provider = (overrides.provider ??
+    process.env.KANZAKI_PROVIDER ??
+    stored?.provider ??
+    "openai") as KanzakiConfig["provider"];
 
   // APIキー解決: CLIフラグ → env → 保存済み
   let apiKey = overrides.apiKey ?? process.env.KANZAKI_API_KEY ?? "";
@@ -53,9 +53,16 @@ export function loadConfig(overrides: Partial<KanzakiConfig> = {}): KanzakiConfi
     );
   }
 
-  const model = overrides.model ?? process.env.KANZAKI_MODEL ?? DEFAULT_MODELS[provider] ?? "gpt-5.4";
+  const model =
+    overrides.model ??
+    process.env.KANZAKI_MODEL ??
+    DEFAULT_MODELS[provider] ??
+    "gpt-5.4";
 
-  const rulesPath = overrides.rulesPath ?? process.env.KANZAKI_RULES_PATH ?? ".kanzaki/rules.md";
+  const rulesPath =
+    overrides.rulesPath ??
+    process.env.KANZAKI_RULES_PATH ??
+    ".kanzaki/rules.md";
 
   return {
     provider,
@@ -64,7 +71,7 @@ export function loadConfig(overrides: Partial<KanzakiConfig> = {}): KanzakiConfi
     rulesPath: resolve(process.cwd(), rulesPath),
     verbose: overrides.verbose ?? false,
     noBlock: overrides.noBlock ?? false,
-    useOAuth: !!(stored?.oauthToken),
-    useClaudeCli: !!(stored?.useClaudeCli),
+    useOAuth: !!stored?.oauthToken,
+    useClaudeCli: !!stored?.useClaudeCli,
   };
 }

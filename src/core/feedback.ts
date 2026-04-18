@@ -1,8 +1,8 @@
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ReviewResult, RuleResult } from "../llm/types.js";
-import type { Rule } from "./parser.js";
 import type { ReviewSource } from "./git.js";
+import type { Rule } from "./parser.js";
 
 /**
  * レビュー結果からコーディングエージェント向けのフィードバックmarkdownを生成し、
@@ -23,7 +23,13 @@ export function writeFeedbackFile(
 
   const now = new Date();
   const filePath = join(outputDir, `${formatTimestamp(now)}.md`);
-  const content = buildFeedbackMarkdown(failures, rules, source, now, result.summary);
+  const content = buildFeedbackMarkdown(
+    failures,
+    rules,
+    source,
+    now,
+    result.summary,
+  );
   writeFileSync(filePath, content, "utf-8");
   return filePath;
 }
@@ -61,13 +67,21 @@ function buildFeedbackMarkdown(
   lines.push(``);
   lines.push(`## Instructions for Coding Agents`);
   lines.push(``);
-  lines.push(`以下は \`kanzaki check\` が検出したルール違反です。各違反について、指摘内容を読み、対象ファイルの該当箇所を修正してください。`);
+  lines.push(
+    `以下は \`kanzaki check\` が検出したルール違反です。各違反について、指摘内容を読み、対象ファイルの該当箇所を修正してください。`,
+  );
   if (source.kind === "staged") {
-    lines.push(`修正後は \`git add\` で再度ステージし、\`kanzaki check\` を実行して違反が解消されたことを確認してください。`);
+    lines.push(
+      `修正後は \`git add\` で再度ステージし、\`kanzaki check\` を実行して違反が解消されたことを確認してください。`,
+    );
   } else {
-    lines.push(`修正後は同じ起点で \`kanzaki check\` を再実行し、違反が解消されたことを確認してください。`);
+    lines.push(
+      `修正後は同じ起点で \`kanzaki check\` を再実行し、違反が解消されたことを確認してください。`,
+    );
   }
-  lines.push(`ルール定義そのものを変更することで違反を回避することは禁止されています（ルールの変更が必要な場合はユーザーに確認してください）。`);
+  lines.push(
+    `ルール定義そのものを変更することで違反を回避することは禁止されています（ルールの変更が必要な場合はユーザーに確認してください）。`,
+  );
   lines.push(``);
   lines.push(`## Violations`);
   lines.push(``);
@@ -79,9 +93,14 @@ function buildFeedbackMarkdown(
     lines.push(``);
     if (rule) {
       lines.push(`- **グループ**: ${rule.group}`);
-      const fileScope = rule.filePatterns.length > 0 ? rule.filePatterns.join(", ") : "全ファイル";
+      const fileScope =
+        rule.filePatterns.length > 0
+          ? rule.filePatterns.join(", ")
+          : "全ファイル";
       lines.push(`- **適用スコープ**: ${fileScope}`);
-      lines.push(`- **判定スコープ**: ${rule.scope === "state" ? "state（ファイル現状）" : "diff（差分）"}`);
+      lines.push(
+        `- **判定スコープ**: ${rule.scope === "state" ? "state（ファイル現状）" : "diff（差分）"}`,
+      );
       if (rule.stateExtraPatterns.length > 0) {
         lines.push(`- **追加参照**: ${rule.stateExtraPatterns.join(", ")}`);
       }

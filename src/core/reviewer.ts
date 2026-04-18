@@ -1,11 +1,16 @@
 import type { KanzakiConfig } from "../config.js";
-import type { Rule } from "./parser.js";
-import { formatRulesForPrompt } from "./parser.js";
-import type { FileContext, ReviewSource } from "./git.js";
-import type { LLMProvider, RawReviewResult, ReviewResult, Severity } from "../llm/types.js";
-import { OpenAIProvider } from "../llm/openai.js";
 import { AnthropicProvider } from "../llm/anthropic.js";
 import { ClaudeCliProvider } from "../llm/claude-cli.js";
+import { OpenAIProvider } from "../llm/openai.js";
+import type {
+  LLMProvider,
+  RawReviewResult,
+  ReviewResult,
+  Severity,
+} from "../llm/types.js";
+import type { FileContext, ReviewSource } from "./git.js";
+import type { Rule } from "./parser.js";
+import { formatRulesForPrompt } from "./parser.js";
 
 const SYSTEM_PROMPT = `You are a strict quality reviewer. Your job is to review a set of changes (or a snapshot of files) against a checklist of rules defined by the user.
 
@@ -92,7 +97,9 @@ function buildUserPrompt(
   parts.push(`## Review Source\n`);
   parts.push(`Source: ${source.label}`);
   if (source.kind === "files") {
-    parts.push("Mode: files-only (no diff). Evaluate each rule against the current state of the files below.");
+    parts.push(
+      "Mode: files-only (no diff). Evaluate each rule against the current state of the files below.",
+    );
   }
   parts.push("");
 
@@ -111,7 +118,9 @@ function buildUserPrompt(
   // ファイルコンテキスト
   if (fileContexts.length > 0) {
     parts.push("## Full File Context\n");
-    parts.push("The following are the full contents of the files under review:\n");
+    parts.push(
+      "The following are the full contents of the files under review:\n",
+    );
     for (const ctx of fileContexts) {
       const ext = ctx.path.split(".").pop() ?? "";
       parts.push(`### ${ctx.path}\n`);

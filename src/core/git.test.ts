@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 // 内部関数はexportされていないため、モジュールを直接importして挙動を検証する。
 // extractEndRef と isBinaryPath は現状 private のままだが、将来テスト容易性のために

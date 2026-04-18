@@ -13,7 +13,11 @@ export interface ReportSummary {
  * @param noBlock --no-block 指定時は true。エラーがあっても「blocked」表示にしない。
  * @returns エラーと警告の失敗数
  */
-export function report(result: ReviewResult, verbose: boolean, noBlock = false): ReportSummary {
+export function report(
+  result: ReviewResult,
+  verbose: boolean,
+  noBlock = false,
+): ReportSummary {
   const { results, summary } = result;
 
   console.log();
@@ -61,7 +65,9 @@ export function report(result: ReviewResult, verbose: boolean, noBlock = false):
 
     if (errorCount > 0) {
       if (noBlock) {
-        console.log(chalk.yellow("\n  Errors found, but commit allowed (--no-block)."));
+        console.log(
+          chalk.yellow("\n  Errors found, but commit allowed (--no-block)."),
+        );
       } else {
         console.log(chalk.red.bold("\n  Commit blocked due to errors."));
       }

@@ -78,13 +78,19 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
 
       // 括弧の不一致を検出（閉じ括弧忘れ等）
       if (headerText.includes("(") && !headerText.includes(")")) {
-        errors.push({ line: lineNumber, message: `Missing closing parenthesis in file scope: "${headerText}"` });
+        errors.push({
+          line: lineNumber,
+          message: `Missing closing parenthesis in file scope: "${headerText}"`,
+        });
       }
 
       // 空の括弧を検出
       const emptyParenMatch = headerText.match(/\(\s*\)/);
       if (emptyParenMatch) {
-        errors.push({ line: lineNumber, message: `Empty file scope parentheses: "${headerText}". Remove "()" or specify glob patterns inside.` });
+        errors.push({
+          line: lineNumber,
+          message: `Empty file scope parentheses: "${headerText}". Remove "()" or specify glob patterns inside.`,
+        });
       }
       continue;
     }
@@ -92,7 +98,10 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
     // 空のチェックリスト項目を検出 (- [ ] の後にテキストなし)
     const emptyRuleMatch = trimmed.match(/^-\s*\[[\s]?\]\s*$/);
     if (emptyRuleMatch) {
-      errors.push({ line: lineNumber, message: `Empty rule. Checklist item has no text.` });
+      errors.push({
+        line: lineNumber,
+        message: `Empty rule. Checklist item has no text.`,
+      });
       continue;
     }
 
@@ -102,28 +111,42 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
       const rawText = ruleMatch[1].trim();
 
       // 不正なseverityタグの検出（タイポ）
-      const invalidTagMatch = rawText.match(/^!(err|warning|info|critical|block)\b/i);
+      const invalidTagMatch = rawText.match(
+        /^!(err|warning|info|critical|block)\b/i,
+      );
       if (invalidTagMatch) {
-        errors.push({ line: lineNumber, message: `Unknown severity tag "${invalidTagMatch[0]}". Use !error or !warn.` });
+        errors.push({
+          line: lineNumber,
+          message: `Unknown severity tag "${invalidTagMatch[0]}". Use !error or !warn.`,
+        });
       }
 
       // 不正な @state 構文（閉じ括弧忘れ）の検出
       const unclosedScopeMatch = rawText.match(/@state\s*\([^)]*$/i);
       if (unclosedScopeMatch) {
-        errors.push({ line: lineNumber, message: `Missing closing parenthesis in @state(...): "${rawText}"` });
+        errors.push({
+          line: lineNumber,
+          message: `Missing closing parenthesis in @state(...): "${rawText}"`,
+        });
       }
 
       const parsed = parseRuleTags(rawText);
 
       // severityタグ直後に本文がない場合
       if (parsed.text.length === 0) {
-        errors.push({ line: lineNumber, message: `Empty rule. Checklist item has only tag(s) with no description.` });
+        errors.push({
+          line: lineNumber,
+          message: `Empty rule. Checklist item has only tag(s) with no description.`,
+        });
         continue;
       }
 
       // @state() のように空括弧
       if (parsed.scopeHasEmptyParens) {
-        errors.push({ line: lineNumber, message: `Empty @state() parentheses. Use "@state" alone or "@state(<glob>, ...)".` });
+        errors.push({
+          line: lineNumber,
+          message: `Empty @state() parentheses. Use "@state" alone or "@state(<glob>, ...)".`,
+        });
       }
 
       rules.push({
@@ -142,7 +165,10 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
     if (trimmed.length > 0) {
       // リスト項目の形式ミスの検出 (* [ ] や - [x] など)
       if (trimmed.match(/^[-*+]\s*\[(.*?)\]/)) {
-        errors.push({ line: lineNumber, message: `Invalid rule format. Checkbox must be '- [ ]'. Found: "${trimmed}"` });
+        errors.push({
+          line: lineNumber,
+          message: `Invalid rule format. Checkbox must be '- [ ]'. Found: "${trimmed}"`,
+        });
       }
 
       // 通常のコンテキストとして収集
@@ -179,7 +205,10 @@ export function parseRulesFromContent(content: string): ParsedRulesFile {
  * 複数括弧がある場合は **最後** の括弧グループをファイルスコープと解釈する。
  * 例: "Notes (draft) (*.md)" → { name: "Notes (draft)", patterns: ["*.md"] }
  */
-function parseHeaderWithPatterns(header: string): { name: string; patterns: string[] } {
+function parseHeaderWithPatterns(header: string): {
+  name: string;
+  patterns: string[];
+} {
   // 貪欲マッチで末尾の `(...)` を拾う。内側に `(` `)` を含まないものに限定。
   const match = header.match(/^(.+)\s*\(([^()]+)\)\s*$/);
   if (match) {
@@ -246,7 +275,6 @@ function parseRuleTags(rawText: string): ParsedRuleTags {
       }
       text = text.slice(scopeMatch[0].length);
       progressed = true;
-      continue;
     }
   }
 
@@ -273,9 +301,10 @@ export function formatRulesForPrompt(rules: Rule[]): string {
 
   const sections: string[] = [];
   for (const [group, groupRules] of grouped) {
-    const fileScope = groupRules[0]?.filePatterns.length > 0
-      ? ` (applies to: ${groupRules[0].filePatterns.join(", ")})`
-      : "";
+    const fileScope =
+      groupRules[0]?.filePatterns.length > 0
+        ? ` (applies to: ${groupRules[0].filePatterns.join(", ")})`
+        : "";
     sections.push(`### ${group}${fileScope}`);
     for (let i = 0; i < groupRules.length; i++) {
       const r = groupRules[i];
@@ -297,7 +326,10 @@ export function formatRulesForPrompt(rules: Rule[]): string {
  * 変更ファイル一覧に基づいてルールをフィルタリングする。
  * filePatterns が空のルールは全ファイルに適用される。
  */
-export function filterRulesByFiles(rules: Rule[], changedFiles: string[]): Rule[] {
+export function filterRulesByFiles(
+  rules: Rule[],
+  changedFiles: string[],
+): Rule[] {
   return rules.filter((rule) => {
     // パターン未指定 → 全ファイル対象
     if (rule.filePatterns.length === 0) return true;
