@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import pc from "picocolors";
 import type { ReviewResult } from "../llm/types.js";
 
 export interface ReportSummary {
@@ -21,7 +21,7 @@ export function report(
   const { results, summary } = result;
 
   console.log();
-  console.log(chalk.bold.underline("Kanzaki Review Results"));
+  console.log(pc.bold(pc.underline("Kanzaki Review Results")));
   console.log();
 
   let errorCount = 0;
@@ -29,22 +29,22 @@ export function report(
 
   for (const r of results) {
     const isWarn = r.severity === "warn";
-    const label = isWarn ? chalk.dim("[warn]") : chalk.dim("[error]");
+    const label = isWarn ? pc.dim("[warn]") : pc.dim("[error]");
 
     if (r.passed) {
-      console.log(`  ${chalk.green("✓")} ${label} ${r.rule}`);
+      console.log(`  ${pc.green("✓")} ${label} ${r.rule}`);
       if (verbose) {
-        console.log(`    ${chalk.dim(r.reason)}`);
+        console.log(`    ${pc.dim(r.reason)}`);
       }
     } else {
       if (isWarn) {
         warnCount++;
-        console.log(`  ${chalk.yellow("⚠")} ${label} ${r.rule}`);
-        console.log(`    ${chalk.yellow("→")} ${r.reason}`);
+        console.log(`  ${pc.yellow("⚠")} ${label} ${r.rule}`);
+        console.log(`    ${pc.yellow("→")} ${r.reason}`);
       } else {
         errorCount++;
-        console.log(`  ${chalk.red("✗")} ${label} ${r.rule}`);
-        console.log(`    ${chalk.red("→")} ${r.reason}`);
+        console.log(`  ${pc.red("✗")} ${label} ${r.rule}`);
+        console.log(`    ${pc.red("→")} ${r.reason}`);
       }
     }
   }
@@ -55,30 +55,30 @@ export function report(
   const passedCount = total - errorCount - warnCount;
 
   if (errorCount === 0 && warnCount === 0) {
-    console.log(chalk.green.bold(`  All ${total} rules passed ✓`));
+    console.log(pc.bold(pc.green(`  All ${total} rules passed ✓`)));
   } else {
     const parts: string[] = [];
     parts.push(`${passedCount}/${total} passed`);
-    if (errorCount > 0) parts.push(chalk.red(`${errorCount} errors`));
-    if (warnCount > 0) parts.push(chalk.yellow(`${warnCount} warnings`));
+    if (errorCount > 0) parts.push(pc.red(`${errorCount} errors`));
+    if (warnCount > 0) parts.push(pc.yellow(`${warnCount} warnings`));
     console.log(`  ${parts.join(", ")}`);
 
     if (errorCount > 0) {
       if (noBlock) {
         console.log(
-          chalk.yellow("\n  Errors found, but commit allowed (--no-block)."),
+          pc.yellow("\n  Errors found, but commit allowed (--no-block)."),
         );
       } else {
-        console.log(chalk.red.bold("\n  Commit blocked due to errors."));
+        console.log(pc.bold(pc.red("\n  Commit blocked due to errors.")));
       }
     } else {
-      console.log(chalk.yellow("\n  Warnings found, but commit allowed."));
+      console.log(pc.yellow("\n  Warnings found, but commit allowed."));
     }
   }
 
   if (summary) {
     console.log();
-    console.log(chalk.dim(`  ${summary}`));
+    console.log(pc.dim(`  ${summary}`));
   }
 
   console.log();

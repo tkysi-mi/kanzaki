@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import chalk from "chalk";
 import { Command } from "commander";
+import pc from "picocolors";
 import {
   clearCredentials,
   loadCredentials,
@@ -56,32 +56,30 @@ export function createCli(): Command {
       }
 
       if (existsSync(rulesPath)) {
-        console.log(
-          chalk.yellow("⚠ .kanzaki/rules.md already exists, skipping."),
-        );
+        console.log(pc.yellow("⚠ .kanzaki/rules.md already exists, skipping."));
       } else {
         const template = loadTemplate();
         writeFileSync(rulesPath, template, "utf-8");
-        console.log(chalk.green("✓ Created .kanzaki/rules.md"));
+        console.log(pc.green("✓ Created .kanzaki/rules.md"));
       }
 
       // reviewsフォルダ（フィードバック出力先）はGit管理対象外にする
       const kanzakiGitignore = resolve(rulesDir, ".gitignore");
       if (!existsSync(kanzakiGitignore)) {
         writeFileSync(kanzakiGitignore, "reviews/\n", "utf-8");
-        console.log(chalk.green("✓ Created .kanzaki/.gitignore"));
+        console.log(pc.green("✓ Created .kanzaki/.gitignore"));
       }
 
       console.log();
       console.log(
-        chalk.dim("Edit .kanzaki/rules.md to customize your review rules."),
+        pc.dim("Edit .kanzaki/rules.md to customize your review rules."),
       );
       console.log(
-        chalk.dim(
+        pc.dim(
           "You can run 'kanzaki check' directly, or set it up with husky/lint-staged.",
         ),
       );
-      console.log(chalk.dim("Run 'kanzaki login' to authenticate."));
+      console.log(pc.dim("Run 'kanzaki login' to authenticate."));
     });
 
   // ── check ─────────────────────────────────────────────
@@ -121,7 +119,7 @@ export function createCli(): Command {
 
         if (sourceFlagsUsed.length > 1) {
           console.error(
-            chalk.red(
+            pc.red(
               `Cannot combine ${sourceFlagsUsed.join(" and ")}. Choose exactly one source.`,
             ),
           );
@@ -138,9 +136,7 @@ export function createCli(): Command {
 
         // stagedモードのみ、早期終了チェック
         if (sourceKind === "staged" && !hasStagedChanges()) {
-          console.log(
-            chalk.yellow("No staged changes found. Nothing to review."),
-          );
+          console.log(pc.yellow("No staged changes found. Nothing to review."));
           process.exit(0);
         }
 
@@ -156,8 +152,8 @@ export function createCli(): Command {
 
         // ルールファイルの存在確認
         if (!existsSync(config.rulesPath)) {
-          console.error(chalk.red(`Rules file not found: ${config.rulesPath}`));
-          console.error(chalk.dim("Run 'kanzaki init' to create one."));
+          console.error(pc.red(`Rules file not found: ${config.rulesPath}`));
+          console.error(pc.dim("Run 'kanzaki init' to create one."));
           process.exit(1);
         }
 
@@ -170,22 +166,22 @@ export function createCli(): Command {
 
         if (parseErrors && parseErrors.length > 0) {
           console.error(
-            chalk.red.bold(
-              `\n❌ Found ${parseErrors.length} formatting error(s) in ${config.rulesPath}:`,
+            pc.bold(
+              pc.red(
+                `\n❌ Found ${parseErrors.length} formatting error(s) in ${config.rulesPath}:`,
+              ),
             ),
           );
           parseErrors.forEach((err) => {
-            console.error(chalk.yellow(`  Line ${err.line}: `) + err.message);
+            console.error(pc.yellow(`  Line ${err.line}: `) + err.message);
           });
-          console.error(
-            chalk.dim("\nPlease fix these errors before committing."),
-          );
+          console.error(pc.dim("\nPlease fix these errors before committing."));
           process.exit(1);
         }
 
         if (rules.length === 0) {
           console.log(
-            chalk.yellow("No rules found in rules file. Skipping review."),
+            pc.yellow("No rules found in rules file. Skipping review."),
           );
           process.exit(0);
         }
@@ -194,15 +190,13 @@ export function createCli(): Command {
         const warnRules = rules.filter((r) => r.severity === "warn").length;
 
         if (config.verbose) {
+          console.log(pc.dim(`Provider: ${config.provider} (${config.model})`));
           console.log(
-            chalk.dim(`Provider: ${config.provider} (${config.model})`),
-          );
-          console.log(
-            chalk.dim(`Rules: ${errorRules} errors, ${warnRules} warnings`),
+            pc.dim(`Rules: ${errorRules} errors, ${warnRules} warnings`),
           );
           if (rulesContext) {
             console.log(
-              chalk.dim(
+              pc.dim(
                 `Context: ${rulesContext.length} chars of additional context`,
               ),
             );
@@ -218,7 +212,7 @@ export function createCli(): Command {
 
         if (source.files.length === 0) {
           console.log(
-            chalk.yellow(`No files to review (source: ${source.label}).`),
+            pc.yellow(`No files to review (source: ${source.label}).`),
           );
           process.exit(0);
         }
@@ -228,7 +222,7 @@ export function createCli(): Command {
 
         if (applicableRules.length === 0) {
           console.log(
-            chalk.yellow(
+            pc.yellow(
               "No applicable rules for changed files. Skipping review.",
             ),
           );
@@ -243,16 +237,14 @@ export function createCli(): Command {
         const fileContexts = getFileContextsForSource(source, extraPaths);
 
         if (config.verbose) {
-          console.log(chalk.dim(`Source: ${source.label}`));
-          console.log(chalk.dim(`Files: ${source.files.join(", ")}`));
+          console.log(pc.dim(`Source: ${source.label}`));
+          console.log(pc.dim(`Files: ${source.files.join(", ")}`));
           if (extraPaths.length > 0) {
-            console.log(
-              chalk.dim(`Extra state files: ${extraPaths.join(", ")}`),
-            );
+            console.log(pc.dim(`Extra state files: ${extraPaths.join(", ")}`));
           }
           if (applicableRules.length < rules.length) {
             console.log(
-              chalk.dim(
+              pc.dim(
                 `Rules filtered: ${applicableRules.length}/${rules.length} applicable`,
               ),
             );
@@ -260,7 +252,7 @@ export function createCli(): Command {
         }
 
         // LLMレビュー
-        console.log(chalk.dim("Reviewing changes with LLM..."));
+        console.log(pc.dim("Reviewing changes with LLM..."));
         const result = await review(
           config,
           applicableRules,
@@ -283,7 +275,7 @@ export function createCli(): Command {
             reviewsDir,
           );
           if (feedbackPath) {
-            console.log(chalk.dim(`→ Feedback written to ${feedbackPath}`));
+            console.log(pc.dim(`→ Feedback written to ${feedbackPath}`));
           }
         }
 
@@ -292,7 +284,7 @@ export function createCli(): Command {
           process.exit(1);
         }
       } catch (error) {
-        console.error(chalk.red(`Error: ${(error as Error).message}`));
+        console.error(pc.red(`Error: ${(error as Error).message}`));
         process.exit(1);
       }
     });
@@ -317,7 +309,7 @@ export function createCli(): Command {
       if (opts.useChatgpt) {
         // OpenAI OAuth Flow
 
-        console.log(chalk.dim("Starting OAuth Authorization Code Flow..."));
+        console.log(pc.dim("Starting OAuth Authorization Code Flow..."));
         try {
           const token = await loginWithOAuthPKCE();
 
@@ -332,28 +324,26 @@ export function createCli(): Command {
             expiresAt,
           });
 
-          console.log(chalk.green("\n✓ Authenticated via OAuth"));
+          console.log(pc.green("\n✓ Authenticated via OAuth"));
         } catch (error) {
-          console.error(chalk.red(`OAuth failed: ${(error as Error).message}`));
-          console.error(
-            chalk.dim("Try 'kanzaki login' with an API key instead."),
-          );
+          console.error(pc.red(`OAuth failed: ${(error as Error).message}`));
+          console.error(pc.dim("Try 'kanzaki login' with an API key instead."));
           process.exit(1);
         }
       } else if (opts.useClaude) {
         // Claude CLI subprocess flow (OpenClaw style)
-        console.log(chalk.dim("Checking local Claude CLI installation..."));
+        console.log(pc.dim("Checking local Claude CLI installation..."));
 
         try {
           const version = execSync("claude --version", {
             encoding: "utf-8",
             stdio: ["ignore", "pipe", "pipe"],
           }).trim();
-          console.log(chalk.dim(`Found: ${version}`));
+          console.log(pc.dim(`Found: ${version}`));
         } catch {
-          console.error(chalk.red("Claude CLI not found."));
+          console.error(pc.red("Claude CLI not found."));
           console.error(
-            chalk.dim(
+            pc.dim(
               "Install it from https://docs.claude.com/en/docs/claude-code and run 'claude login' first.",
             ),
           );
@@ -366,32 +356,32 @@ export function createCli(): Command {
           useClaudeCli: true,
         });
 
-        console.log(chalk.green("\n✓ Configured to use local Claude CLI"));
+        console.log(pc.green("\n✓ Configured to use local Claude CLI"));
         console.log(
-          chalk.dim(
+          pc.dim(
             "Kanzaki will invoke 'claude -p' for reviews, using your existing Claude CLI session.",
           ),
         );
         console.log(
-          chalk.dim("Credentials stored in ~/.config/kanzaki/credentials.json"),
+          pc.dim("Credentials stored in ~/.config/kanzaki/credentials.json"),
         );
       } else {
         // API Key入力（--provider 必須）
         if (!opts.provider) {
-          console.error(chalk.red("Authentication method is required."));
-          console.error(chalk.dim("Use one of:"));
+          console.error(pc.red("Authentication method is required."));
+          console.error(pc.dim("Use one of:"));
           console.error(
-            chalk.dim(
+            pc.dim(
               `  kanzaki login --provider <${SUPPORTED_PROVIDERS.join(" | ")}>   (API key)`,
             ),
           );
           console.error(
-            chalk.dim(
+            pc.dim(
               "  kanzaki login --use-chatgpt                         (ChatGPT OAuth)",
             ),
           );
           console.error(
-            chalk.dim(
+            pc.dim(
               "  kanzaki login --use-claude                          (Claude CLI subprocess)",
             ),
           );
@@ -399,9 +389,9 @@ export function createCli(): Command {
         }
 
         if (!SUPPORTED_PROVIDERS.includes(opts.provider as SupportedProvider)) {
-          console.error(chalk.red(`Unknown provider: ${opts.provider}`));
+          console.error(pc.red(`Unknown provider: ${opts.provider}`));
           console.error(
-            chalk.dim(`Supported providers: ${SUPPORTED_PROVIDERS.join(", ")}`),
+            pc.dim(`Supported providers: ${SUPPORTED_PROVIDERS.join(", ")}`),
           );
           process.exit(1);
         }
@@ -411,14 +401,14 @@ export function createCli(): Command {
         const key = await promptSecret(`Enter your ${label} API key: `);
 
         if (!key) {
-          console.error(chalk.red("No API key provided."));
+          console.error(pc.red("No API key provided."));
           process.exit(1);
         }
 
         saveCredentials({ provider, apiKey: key });
-        console.log(chalk.green(`✓ Saved ${provider} credentials`));
+        console.log(pc.green(`✓ Saved ${provider} credentials`));
         console.log(
-          chalk.dim("Credentials stored in ~/.config/kanzaki/credentials.json"),
+          pc.dim("Credentials stored in ~/.config/kanzaki/credentials.json"),
         );
       }
     });
@@ -429,7 +419,7 @@ export function createCli(): Command {
     .description("Remove saved credentials")
     .action(() => {
       clearCredentials();
-      console.log(chalk.green("✓ Credentials removed"));
+      console.log(pc.green("✓ Credentials removed"));
     });
 
   // ── status ────────────────────────────────────────────
@@ -442,28 +432,28 @@ export function createCli(): Command {
         !creds ||
         (!creds.apiKey && !creds.oauthToken && !creds.useClaudeCli)
       ) {
-        console.log(chalk.yellow("Not authenticated."));
-        console.log(chalk.dim("Run 'kanzaki login' to authenticate."));
+        console.log(pc.yellow("Not authenticated."));
+        console.log(pc.dim("Run 'kanzaki login' to authenticate."));
         return;
       }
 
-      console.log(chalk.bold("Kanzaki Status"));
-      console.log(`  Provider: ${chalk.cyan(creds.provider)}`);
+      console.log(pc.bold("Kanzaki Status"));
+      console.log(`  Provider: ${pc.cyan(creds.provider)}`);
 
       if (creds.useClaudeCli) {
         console.log(
-          `  Auth: ${chalk.cyan("Claude CLI subprocess")} ${chalk.green("(active)")}`,
+          `  Auth: ${pc.cyan("Claude CLI subprocess")} ${pc.green("(active)")}`,
         );
       } else if (creds.oauthToken) {
         const expired =
           creds.expiresAt && new Date(creds.expiresAt) < new Date();
         console.log(
-          `  Auth: ${chalk.cyan("OAuth")}${expired ? chalk.red(" (expired)") : chalk.green(" (active)")}`,
+          `  Auth: ${pc.cyan("OAuth")}${expired ? pc.red(" (expired)") : pc.green(" (active)")}`,
         );
       } else {
         const masked =
           creds.apiKey.slice(0, 7) + "..." + creds.apiKey.slice(-4);
-        console.log(`  Auth: ${chalk.cyan("API Key")} (${masked})`);
+        console.log(`  Auth: ${pc.cyan("API Key")} (${masked})`);
       }
     });
 
