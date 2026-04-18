@@ -33,14 +33,15 @@
     "node": ">=20.6"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.90.0",
     "commander": "^13.1.0",
     "open": "^11.0.0",
-    "openai": "^4.85.4",
+    "openai": "^6.34.0",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",
+    "@types/node": "^25.6.0",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
     "vitest": "^4.1.4"
