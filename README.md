@@ -178,8 +178,7 @@ echo "npx kanzaki check" > .husky/pre-commit
 
 ### ルール例
 
-<details>
-<summary>リサーチ・論文</summary>
+#### リサーチ・論文
 
 ```markdown
 # リサーチレビュールール
@@ -200,10 +199,8 @@ echo "npx kanzaki check" > .husky/pre-commit
 - [ ] !warn 用語が文書全体で統一されていること
 - [ ] !warn 受動態の過剰使用を避けていること
 ```
-</details>
 
-<details>
-<summary>ソフトウェア開発</summary>
+#### ソフトウェア開発
 
 ```markdown
 # コードレビュールール
@@ -224,10 +221,8 @@ REST API は全エンドポイントに認証が必要。
 ## ドキュメント (*.md)
 - [ ] !warn API変更に伴うドキュメント更新が含まれていること
 ```
-</details>
 
-<details>
-<summary>プレゼン・レポート</summary>
+#### プレゼン・レポート
 
 ```markdown
 # プレゼンレビュールール
@@ -244,7 +239,6 @@ Q4 決算報告プレゼンテーション。
 - [ ] !warn 箇条書きが簡潔であること
 - [ ] !warn フォーマットが全スライドで統一されていること
 ```
-</details>
 
 ### ルールファイルのフォーマットチェック
 
