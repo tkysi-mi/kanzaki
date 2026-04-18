@@ -284,6 +284,61 @@ Q4 決算報告プレゼンテーション。
 
 ---
 
+## プロンプトの構造
+
+Kanzakiは1回のレビューで **システムプロンプト** と **ユーザープロンプト** の2つをLLMに送信します。ユーザープロンプトは次の順序でブロックを組み立てます（各ブロックは該当データがある場合のみ出現）。
+
+```text
+## Project Context           # rules.md の自由記述テキスト（任意）
+<コンテキスト本文>
+
+## Review Source              # 起点ラベル（"staged" / "range:a..b" / "files" など）
+Source: <label>
+Mode: files-only (no diff) …  # --files 指定時のみ
+
+## Checklist Rules            # ファイルスコープでフィルタ後のルール
+### <グループ名> (applies to: *.ts, *.md)
+- Rule #1 [severity=ERROR, scope=state, also_consult=docs/glossary.md]
+    text: コメント中の業務用語が glossary.md と一致していること
+- Rule #2 [severity=WARNING, scope=diff]
+    text: …
+
+## Changes (git diff)         # 起点が staged/workingTree/range のとき
+```diff
+<差分本文 最大50,000文字>
+```
+
+## Full File Context          # 対象ファイル＋@state(<glob>) の参照先
+### src/example.ts
+```ts
+<ファイル全文 各最大20,000文字>
+```
+```
+
+**サイズ制限**:
+
+| ブロック | 上限 | 超過時 |
+|---------|------|--------|
+| diff 全体 | 50,000文字 | 末尾を `... (truncated)` で切り詰め |
+| ファイル1件あたり | 20,000文字 | 同上 |
+| ファイル読み込み時 | 100,000文字 | そのファイルを丸ごと除外 |
+
+バイナリファイル（`.png`, `.pdf`, `.lock` など拡張子ベース）は自動で除外されます。
+
+**システムプロンプトに含まれる指示**:
+
+- レビュアーとしての役割定義（コード・ドキュメント・論文など任意のドメインに対応）
+- `scope=diff` と `scope=state` の解釈ルール（差分のみを見るか、現状全体を見るか）
+- `also_consult=<glob>` の意味（追加参照ファイル）
+- レスポンスJSONスキーマ（`{ results: [{ rule, passed, reason }], summary }`）
+
+**確認と拡張**:
+
+- `kanzaki check --verbose` は送信される内容のメタ情報（プロバイダー・モデル・ルール件数・対象ファイル・追加参照ファイル）を表示しますが、プロンプト全文はダンプしません。
+- 生のプロンプト構築ロジックは [`src/core/reviewer.ts`](src/core/reviewer.ts) の `SYSTEM_PROMPT` 定数と `buildUserPrompt()` 関数にあります。挙動を完全に把握したい場合はこちらを参照してください。
+
+---
+
 ## エージェント向けフィードバック出力
 
 `kanzaki check --emit-feedback`（または `-o`）を指定すると、違反内容をまとめたMarkdownを `.kanzaki/reviews/<タイムスタンプ>.md` に書き出します。Claude Code や Cursor などのコーディングエージェントに「このファイルを読んで修正してください」と渡す用途を想定しています。
