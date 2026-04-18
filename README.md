@@ -27,7 +27,7 @@
 8. **プロンプト構築** — コンテキスト、起点情報、ルール一覧（判定スコープ付き）、diff（最大50KB）、ファイル全文（各最大20KB）を1つのプロンプトにまとめます。
 9. **LLM呼び出し** — OpenAIはJSON mode、AnthropicはテキストレスポンスからJSONを抽出します。各ルールについて `{ rule, passed, reason }` が返されます。
 10. **結果出力** — `!error` ルールが1件でも失敗した場合は `exit(1)` でコミットをブロックします。`!warn` のみの失敗なら警告を表示して `exit(0)` します。
-11. **フィードバック書き出し（任意）** — `--emit-feedback` 指定時、違反があれば `.kanzaki/reviews/<タイムスタンプ>.md` にコーディングエージェント向けの指示ファイルを出力します。詳細は [エージェント向けフィードバック出力](#エージェント向けフィードバック出力) を参照してください。
+11. **フィードバック書き出し（既定で有効）** — 違反があれば `.kanzaki/reviews/<タイムスタンプ>.md` にコーディングエージェント向けの指示ファイルを出力します。不要な場合は `--no-emit-feedback` で無効化できます。詳細は [エージェント向けフィードバック出力](#エージェント向けフィードバック出力) を参照してください。
 
 pre-commitフック（Husky等）で実行することを想定していますが、手動実行でも同じように使えます。
 
@@ -341,7 +341,7 @@ Mode: files-only (no diff) …  # --files 指定時のみ
 
 ## エージェント向けフィードバック出力
 
-`kanzaki check --emit-feedback`（または `-o`）を指定すると、違反内容をまとめたMarkdownを `.kanzaki/reviews/<タイムスタンプ>.md` に書き出します。Claude Code や Cursor などのコーディングエージェントに「このファイルを読んで修正してください」と渡す用途を想定しています。
+`kanzaki check` は違反内容をまとめたMarkdownを `.kanzaki/reviews/<タイムスタンプ>.md` に**既定で書き出します**。Claude Code や Cursor などのコーディングエージェントに「このファイルを読んで修正してください」と渡す用途を想定しています。書き出しを止めたい場合は `--no-emit-feedback` を付けてください。
 
 ファイルには次の内容が含まれます。
 
@@ -380,7 +380,7 @@ Mode: files-only (no diff) …  # --files 指定時のみ
 | `-r, --rules <パス>` | ルールファイルのパス（デフォルト: `.kanzaki/rules.md`） |
 | `--api-key <キー>` | APIキーを直接指定（`kanzaki login` の利用を推奨） |
 | `--no-block` | エラーでも `exit(1)` せず、警告のみ |
-| `-o, --emit-feedback` | 違反をまとめたmarkdownを `.kanzaki/reviews/` に書き出す（エージェント向け） |
+| `-o, --emit-feedback` / `--no-emit-feedback` | 違反をまとめたmarkdownを `.kanzaki/reviews/` に書き出す（既定: 有効）。`--no-emit-feedback` で無効化 |
 | `-v, --verbose` | 詳細出力 |
 | `--working-tree` | ステージではなく作業ツリー（`git diff HEAD`）をレビュー |
 | `--range <a..b>` | 任意のリビジョン範囲をレビュー（例: `HEAD~3..HEAD`） |

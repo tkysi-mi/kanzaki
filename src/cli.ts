@@ -93,8 +93,10 @@ export function createCli(): Command {
     .option("--no-block", "Warn only, don't block commit")
     .option(
       "-o, --emit-feedback",
-      "Write feedback markdown (for coding agents) to .kanzaki/reviews/",
+      "Write feedback markdown (for coding agents) to .kanzaki/reviews/ (default: true)",
+      true,
     )
+    .option("--no-emit-feedback", "Do not write feedback markdown")
     .option("-v, --verbose", "Verbose output")
     .option(
       "--working-tree",
