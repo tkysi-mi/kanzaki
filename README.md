@@ -174,6 +174,8 @@ echo "npx kanzaki check" > .husky/pre-commit
 
 パターン未指定のグループは全ファイルに適用されます。
 
+> **glob の挙動について** — Kanzaki は軽量な内製 glob を使っており、アンカーは「ファイル名または `/` 直後」です。そのため `*.ts` は任意の深さで `.ts` ファイルにマッチし、`src/*.ts` は `src/foo.ts` だけでなく `app/src/foo.ts` などネストした `src/` 配下にもマッチします。厳密なルート相対マッチが必要な場合は、プロジェクトを分けるか `**/src/*.ts` のように明示してください。
+
 ### ルール例
 
 <details>
@@ -326,7 +328,7 @@ Q4 決算報告プレゼンテーション。
 |------|------|-----------|
 | `KANZAKI_API_KEY` | LLM APIキー | — |
 | `KANZAKI_PROVIDER` | `openai` / `anthropic` | `openai` |
-| `KANZAKI_MODEL` | モデル名 | `gpt-5.4`（OpenAI）/ `claude-sonnet-4-20250514`（Anthropic） |
+| `KANZAKI_MODEL` | モデル名 | `gpt-5.4`（OpenAI）/ `claude-sonnet-4-6`（Anthropic） |
 | `KANZAKI_RULES_PATH` | ルールファイルのパス | `.kanzaki/rules.md` |
 
 プロジェクトルートに `.env` があれば自動で読み込まれます。

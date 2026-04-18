@@ -1,5 +1,20 @@
 node_modules/
 dist/
 .env
+.env.local
+.env.*.local
 .kanzaki/
 credentials.json
+
+# editor / agent local settings
+.claude/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs / coverage
+*.log
+coverage/
