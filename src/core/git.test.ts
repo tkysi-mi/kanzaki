@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -19,7 +19,11 @@ function git(cwd: string, args: string[]): string {
 }
 
 function initRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "kanzaki-git-test-"));
+  // realpathSync: on Windows, tmpdir() can return a short-name path
+  // (e.g. RUNNER~1) while `git rev-parse --show-toplevel` returns the
+  // long-name canonical form. Without this, path.relative() in
+  // getFilesSource() can't match the two and fails to normalize.
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "kanzaki-git-test-")));
   git(dir, ["init", "-q", "-b", "main"]);
   git(dir, ["config", "user.email", "test@example.com"]);
   git(dir, ["config", "user.name", "test"]);
