@@ -4,7 +4,7 @@
   "description": "LLM-powered semantic pre-commit linter. Define rules in Markdown, review diffs with AI.",
   "type": "module",
   "bin": {
-    "kanzaki": "./dist/bin.js"
+    "kanzaki": "dist/bin.js"
   },
   "scripts": {
     "build": "tsup",
