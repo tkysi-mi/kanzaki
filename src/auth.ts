@@ -123,6 +123,15 @@ function generatePKCE(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export async function loginWithOAuthPKCE(): Promise<TokenResponse> {
   const { verifier, challenge } = generatePKCE();
   const state = randomBytes(16).toString("base64url");
@@ -170,9 +179,9 @@ export async function loginWithOAuthPKCE(): Promise<TokenResponse> {
 
         if (error) {
           res.writeHead(400, { "Content-Type": "text/html" });
-          res.end(
-            `<h1>Authentication Failed</h1><p>${error}: ${errorDesc || "Unknown error"}</p>`,
-          );
+          // nosemgrep: javascript.express.security.injection.raw-html-format.raw-html-format
+          const body = `<h1>Authentication Failed</h1><p>${escapeHtml(error)}: ${escapeHtml(errorDesc || "Unknown error")}</p>`;
+          res.end(body);
           return finish(new Error(`OAuth error: ${error} - ${errorDesc}`));
         }
 
