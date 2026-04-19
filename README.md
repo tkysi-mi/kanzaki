@@ -400,7 +400,7 @@ Mode: files-only (no diff) …  # --files 指定時のみ
 |------|------|-----------|
 | `KANZAKI_API_KEY` | LLM APIキー | — |
 | `KANZAKI_PROVIDER` | `openai` / `anthropic` | `openai` |
-| `KANZAKI_MODEL` | モデル名 | `gpt-5.4`（OpenAI）/ `claude-sonnet-4-6`（Anthropic） |
+| `KANZAKI_MODEL` | モデル名 | `gpt-5.4`（OpenAI）/ `claude-opus-4-7`（Anthropic） |
 | `KANZAKI_RULES_PATH` | ルールファイルのパス | `.kanzaki/rules.md` |
 
 プロジェクトルートに `.env` があれば自動で読み込まれます。

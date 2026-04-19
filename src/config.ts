@@ -17,7 +17,7 @@ export interface KanzakiConfig {
 
 const DEFAULT_MODELS: Record<string, string> = {
   openai: "gpt-5.4",
-  anthropic: "claude-sonnet-4-6",
+  anthropic: "claude-opus-4-7",
 };
 
 /**

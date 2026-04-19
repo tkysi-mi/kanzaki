@@ -80,7 +80,7 @@ describe("loadConfig", () => {
     const cfg = loadConfig({ apiKey: "override-key", provider: "anthropic" });
     expect(cfg.apiKey).toBe("override-key");
     expect(cfg.provider).toBe("anthropic");
-    expect(cfg.model).toBe("claude-sonnet-4-6");
+    expect(cfg.model).toBe("claude-opus-4-7");
   });
 
   it("falls back to stored credentials' active API key when env is unset", () => {
