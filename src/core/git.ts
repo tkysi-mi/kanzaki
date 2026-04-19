@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 
 /**
@@ -132,10 +132,19 @@ function getFilesSource(paths: string[]): ReviewSource {
   const repoRoot = safeRepoRoot();
   const normalized = paths.map((p) => {
     if (!isAbsolute(p)) return p;
-    if (repoRoot) {
-      const rel = relative(repoRoot, p);
-      if (!rel.startsWith("..")) return rel.split("\\").join("/");
+    if (!repoRoot) return p;
+
+    let rel = relative(repoRoot, p);
+    // Windows 8.3短名 (`RUNNER~1` vs `runneradmin`) や未正規化パスで prefix
+    // 不一致を起こした場合は realpath で正規化してリトライする。
+    if (rel.startsWith("..")) {
+      try {
+        rel = relative(repoRoot, realpathSync.native(p));
+      } catch {
+        // ファイルが存在しない等は、元の相対化結果のまま処理する
+      }
     }
+    if (!rel.startsWith("..")) return rel.split("\\").join("/");
     return p;
   });
   return { kind: "files", label: "files", diff: "", files: normalized };
