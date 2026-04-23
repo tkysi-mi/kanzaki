@@ -1,6 +1,6 @@
 {
   "name": "kanzaki",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "LLM-powered semantic pre-commit linter. Define rules in Markdown, review diffs with AI.",
   "type": "module",
   "author": "tkysi-mi",
